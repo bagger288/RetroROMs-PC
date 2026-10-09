@@ -1,18 +1,23 @@
 use crate::models::{CatalogCategory, GameCard, GamesPageResult, RomFileVersion};
 use regex::Regex;
 use scraper::{Html, Selector};
+use serde_json::Value;
 use std::sync::LazyLock;
 use std::time::Duration;
 
 pub const BASE_URL: &str = "https://www.emu-land.net";
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
-static RE_MFILE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"act=(?:getmfl|getfile)&(?:amp;)?id=([0-9]+)").expect("Invalid regex")
+static RE_ID: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"id=([0-9]+)").expect("Invalid regex")
 });
 
 static RE_FID: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"fid=([0-9]+)").expect("Invalid regex")
+});
+
+static RE_YEAR: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"([12][0-9]{3})").expect("Invalid regex")
 });
 
 pub fn get_game_subpath(slug: &str) -> &'static str {
@@ -231,74 +236,110 @@ impl EmuLandClient {
 
         let mut games = Vec::new();
 
-        // Check for items
-        let item_sel = Selector::parse(".glist-item, .game-item, .item-game, .glist tr").unwrap();
-        let title_sel = Selector::parse(".title a, .name a, a.title, .g-title a").unwrap();
-        let img_sel = Selector::parse(".ss-area img, .picture img, .preview img, img.ss").unwrap();
-        let size_sel = Selector::parse(".size, .filesize, .fsize").unwrap();
-        let rating_sel = Selector::parse(".rating, .stars, .score").unwrap();
-        let download_btn_sel = Selector::parse("[onclick*='getmfl'], .btn-sdl, a[href*='act=getmfl'], a[href*='act=getfile']").unwrap();
+        // Emu-Land uses .fcontainer for game cards
+        let container_sel = Selector::parse(".fcontainer").unwrap();
+        let title_sel = Selector::parse(".rheader a, h4.rheader a, .rheader span.hand, h4 a").unwrap();
+        let img_sel = Selector::parse(".picture img, img.pixelated, img.game-screens").unwrap();
+        let finfo_sel = Selector::parse(".finfo li").unwrap();
+        let fbottom_sel = Selector::parse(".fbottom li").unwrap();
+        let dl_btn_sel = Selector::parse(".btn-sdl, .btn-dl, [onclick*='getmfl'], [onclick*='getfile']").unwrap();
 
-        for element in document.select(&item_sel) {
-            let title_elem = element.select(&title_sel).next();
+        for container in document.select(&container_sel) {
+            let title_elem = container.select(&title_sel).next();
             let title = match title_elem {
                 Some(el) => el.text().collect::<Vec<_>>().join(" ").trim().to_string(),
                 None => continue,
             };
-            if title.is_empty() || title == "Название" {
+            if title.is_empty() {
                 continue;
             }
 
-            let game_page_slug = title_elem
+            let game_page_href = title_elem
                 .and_then(|el| el.value().attr("href"))
-                .map(|h| h.trim_start_matches('/').to_string());
+                .unwrap_or("");
 
-            let cover_url = element
-                .select(&img_sel)
-                .next()
-                .and_then(|el| el.value().attr("src"))
-                .and_then(normalize_image_url);
+            let game_page_slug = if !game_page_href.is_empty() {
+                Some(game_page_href.trim_start_matches('/').to_string())
+            } else {
+                None
+            };
 
-            let file_size = element
-                .select(&size_sel)
-                .next()
-                .map(|el| el.text().collect::<Vec<_>>().join(" ").trim().to_string())
-                .unwrap_or_else(|| "ROM".to_string());
+            // Cover and screenshots
+            let mut cover_url = None;
+            let mut screenshot_urls = Vec::new();
 
-            let rating_str = element
-                .select(&rating_sel)
-                .next()
-                .map(|el| el.text().collect::<Vec<_>>().join(" ").trim().to_string())
-                .unwrap_or_default();
-
-            let rating = rating_str
-                .chars()
-                .filter(|c| c.is_ascii_digit() || *c == '.')
-                .collect::<String>()
-                .parse::<f32>()
-                .unwrap_or(4.8);
-
-            // Mfile ID detection
-            let mut mfile_id = None;
-            for btn in element.select(&download_btn_sel) {
-                if let Some(onclick) = btn.value().attr("onclick") {
-                    if let Some(cap) = RE_MFILE.captures(onclick) {
-                        mfile_id = Some(cap[1].to_string());
-                        break;
+            if let Some(img_elem) = container.select(&img_sel).next() {
+                if let Some(src) = img_elem.value().attr("src") {
+                    cover_url = normalize_image_url(src);
+                    if let Some(c) = &cover_url {
+                        screenshot_urls.push(c.clone());
                     }
                 }
-                if let Some(href) = btn.value().attr("href") {
-                    if let Some(cap) = RE_MFILE.captures(href) {
+
+                // Check for data-gallery JSON
+                if let Some(gallery_attr) = img_elem.value().attr("data-gallery") {
+                    if let Ok(val) = serde_json::from_str::<Value>(gallery_attr) {
+                        if let Some(list) = val.get("list").and_then(|l| l.as_array()) {
+                            for item in list {
+                                if let Some(src_str) = item.get("src").and_then(|s| s.as_str()) {
+                                    if let Some(norm) = normalize_image_url(src_str) {
+                                        if !screenshot_urls.contains(&norm) {
+                                            screenshot_urls.push(norm);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Metadata from .finfo
+            let mut genre = "Action".to_string();
+            let mut developer = "Unknown".to_string();
+            let mut publisher = "Unknown".to_string();
+            let mut year = "N/A".to_string();
+
+            for li in container.select(&finfo_sel) {
+                let text = li.text().collect::<Vec<_>>().join(" ").trim().to_string();
+                let lower = text.to_lowercase();
+                if lower.contains("жанр:") {
+                    genre = text.split("Жанр:").nth(1).unwrap_or("Action").trim().to_string();
+                } else if lower.contains("разработчик:") {
+                    developer = text.split("Разработчик:").nth(1).unwrap_or("Unknown").trim().to_string();
+                } else if lower.contains("издатель:") {
+                    publisher = text.split("Издатель:").nth(1).unwrap_or("Unknown").trim().to_string();
+                } else if lower.contains("год выпуска:") {
+                    if let Some(cap) = RE_YEAR.captures(&text) {
+                        year = cap[1].to_string();
+                    }
+                }
+            }
+
+            // File size
+            let mut file_size = "ROM".to_string();
+            for li in container.select(&fbottom_sel) {
+                let text = li.text().collect::<Vec<_>>().join(" ").trim().to_string();
+                if text.to_lowercase().contains("размер:") {
+                    file_size = text.split("Размер:").nth(1).unwrap_or("ROM").trim().to_string();
+                }
+            }
+
+            // Mfile ID detection from download button onclick
+            let mut mfile_id = None;
+            for btn in container.select(&dl_btn_sel) {
+                if let Some(onclick) = btn.value().attr("onclick") {
+                    if let Some(cap) = RE_ID.captures(onclick) {
                         mfile_id = Some(cap[1].to_string());
                         break;
                     }
                 }
             }
 
-            // Fallback: check full element html for act=getmfl
+            // Fallback for mfile_id from pict_ or mfile_ element IDs
             if mfile_id.is_none() {
-                let inner = element.html();
-                if let Some(cap) = RE_MFILE.captures(&inner) {
+                let inner_html = container.html();
+                if let Some(cap) = RE_ID.captures(&inner_html) {
                     mfile_id = Some(cap[1].to_string());
                 }
             }
@@ -312,14 +353,14 @@ impl EmuLandClient {
                 section: section.to_string(),
                 title,
                 original_title: None,
-                genre: "Action / Arcade".to_string(),
-                year: "N/A".to_string(),
-                publisher: "Unknown".to_string(),
-                developer: "Unknown".to_string(),
-                rating,
+                genre,
+                year,
+                publisher,
+                developer,
+                rating: 4.8,
                 file_size,
-                cover_url: cover_url.clone(),
-                screenshot_urls: cover_url.into_iter().collect(),
+                cover_url,
+                screenshot_urls,
                 description: String::new(),
                 download_url: url.clone(),
                 mfile_id,
@@ -331,14 +372,23 @@ impl EmuLandClient {
             });
         }
 
-        // Pagination calculation
-        let page_sel = Selector::parse(".pages a, .pagination a, #pagelist_bottom a").unwrap();
+        // Pagination calculation from .num a
+        let num_sel = Selector::parse(".num a, div.num a, .pagination a").unwrap();
         let mut max_page = page;
-        for a in document.select(&page_sel) {
+        for a in document.select(&num_sel) {
             let t = a.text().collect::<Vec<_>>().join(" ").trim().to_string();
             if let Ok(p) = t.parse::<usize>() {
                 if p > max_page {
                     max_page = p;
+                }
+            }
+            if let Some(href) = a.value().attr("href") {
+                if let Some(cap) = RE_ID.captures(href) {
+                    if let Ok(p) = cap[1].parse::<usize>() {
+                        if p > max_page {
+                            max_page = p;
+                        }
+                    }
                 }
             }
         }
@@ -379,7 +429,7 @@ impl EmuLandClient {
         let document = Html::parse_fragment(&html);
 
         let mut versions = Vec::new();
-        let group_sel = Selector::parse(".collaps-item, .collaps, .mfile-block").unwrap();
+        let group_sel = Selector::parse(".collaps-item, .collaps, .mfile-block, .romlist-group").unwrap();
         let group_title_sel = Selector::parse(".title span, .title, .group-header").unwrap();
         let item_sel = Selector::parse(".item, .file-item, li").unwrap();
         let link_sel = Selector::parse("a[href*='fid='], a[href*='act=']").unwrap();

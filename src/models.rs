@@ -10,6 +10,7 @@ pub enum DownloadStatus {
 }
 
 impl DownloadStatus {
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &'static str {
         match self {
             DownloadStatus::Pending => "В очереди",

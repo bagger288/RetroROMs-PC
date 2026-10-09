@@ -141,11 +141,11 @@ impl RetroRomsApp {
             favorites,
         };
 
-        app.trigger_load_games(1);
+        app.trigger_load_games(1, cc.egui_ctx.clone());
         app
     }
 
-    fn trigger_load_games(&mut self, page: usize) {
+    fn trigger_load_games(&mut self, page: usize, ctx: egui::Context) {
         if self.consoles.is_empty() {
             return;
         }
@@ -160,7 +160,6 @@ impl RetroRomsApp {
         let db = Arc::clone(&self.db);
 
         tokio::spawn(async move {
-            // Fetch categories if needed
             let categories = scraper
                 .fetch_categories(&console.slug, &console.section)
                 .await;
@@ -176,7 +175,6 @@ impl RetroRomsApp {
                 .await
             {
                 Ok(mut res) => {
-                    // Update favorite flags from db
                     for g in &mut res.games {
                         g.is_favorite = db.is_game_favorite(&g.id);
                     }
@@ -194,10 +192,11 @@ impl RetroRomsApp {
                     )));
                 }
             }
+            ctx.request_repaint();
         });
     }
 
-    fn trigger_load_rom_versions(&mut self, game: GameCard) {
+    fn trigger_load_rom_versions(&mut self, game: GameCard, ctx: egui::Context) {
         self.selected_game_for_detail = Some(game.clone());
         self.rom_versions.clear();
         self.is_loading_versions = true;
@@ -231,10 +230,11 @@ impl RetroRomsApp {
                 description: desc,
                 screenshots,
             });
+            ctx.request_repaint();
         });
     }
 
-    fn start_game_download(&mut self, game: GameCard, version: Option<RomFileVersion>) {
+    fn start_game_download(&mut self, game: GameCard, version: Option<RomFileVersion>, ctx: egui::Context) {
         let file_name = version
             .as_ref()
             .map(|v| v.name.clone())
@@ -268,6 +268,7 @@ impl RetroRomsApp {
             self.settings.delete_zip_after_unpack,
             self.download_tx.clone(),
             cancellation,
+            ctx,
         );
 
         self.set_status(format!("Начало загрузки: {}", file_name));
@@ -309,7 +310,6 @@ impl RetroRomsApp {
             .as_ref()
             .map(PathBuf::from)
             .or_else(|| {
-                // Check if file exists in console folder
                 let folder = self.settings.get_console_folder(&game.console_slug);
                 let candidates = [
                     folder.join(format!("{}.nes", game.title)),
@@ -333,7 +333,6 @@ impl RetroRomsApp {
                     return;
                 }
             }
-            // Fallback: reveal in file explorer
             let _ = reveal_in_file_explorer(&rom_path);
             self.set_status("Эмулятор не настроен. Файл показан в проводнике.".into());
         } else {
@@ -349,7 +348,7 @@ impl eframe::App for RetroRomsApp {
             self.active_tab = NavTab::Catalog;
         }
         if ctx.input(|i| i.key_pressed(egui::Key::F5)) {
-            self.trigger_load_games(self.current_page);
+            self.trigger_load_games(self.current_page, ctx.clone());
         }
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.selected_game_for_detail = None;
@@ -366,12 +365,14 @@ impl eframe::App for RetroRomsApp {
                     page,
                     total_pages,
                 } => {
+                    let count = games.len();
                     self.games = games;
                     if !categories.is_empty() {
                         self.categories = categories;
                     }
                     self.current_page = page;
                     self.total_pages = total_pages;
+                    self.set_status(format!("✅ Загружено игр: {} (стр. {}/{})", count, page, total_pages));
                 }
                 ScraperResponse::VersionsLoaded {
                     game_id,
@@ -393,7 +394,7 @@ impl eframe::App for RetroRomsApp {
                     }
                 }
                 ScraperResponse::Error(err) => {
-                    self.set_status(err);
+                    self.set_status(format!("❌ {}", err));
                 }
             }
         }
@@ -403,13 +404,13 @@ impl eframe::App for RetroRomsApp {
             match event {
                 DownloadEvent::Started {
                     record_id,
-                    game_id: _,
+                    game_id,
                     file_name,
                 } => {
                     let console = &self.consoles[self.selected_console_idx];
                     self.active_downloads.push(DownloadRecord {
                         id: record_id,
-                        game_id: "".into(),
+                        game_id,
                         game_title: file_name.clone(),
                         console_slug: console.slug.clone(),
                         console_name: console.name.clone(),
@@ -430,7 +431,7 @@ impl eframe::App for RetroRomsApp {
                     downloaded_bytes,
                     total_bytes,
                     speed_bytes_sec,
-                    percent: _,
+                    _percent: _,
                 } => {
                     if let Some(item) = self.active_downloads.iter_mut().find(|d| d.id == record_id) {
                         item.downloaded_bytes = downloaded_bytes;
@@ -455,7 +456,6 @@ impl eframe::App for RetroRomsApp {
                     );
                     let _ = self.db.mark_game_downloaded(&game_id, true, Some(&file_path));
 
-                    // Update game state
                     for g in &mut self.games {
                         if g.id == game_id {
                             g.is_downloaded = true;
@@ -471,7 +471,7 @@ impl eframe::App for RetroRomsApp {
                 }
                 DownloadEvent::Failed {
                     record_id,
-                    game_id: _,
+                    _game_id: _,
                     error,
                 } => {
                     self.active_downloads.retain(|d| d.id != record_id);
@@ -537,7 +537,7 @@ impl eframe::App for RetroRomsApp {
 
         if console_changed {
             self.selected_category = "top".to_string();
-            self.trigger_load_games(1);
+            self.trigger_load_games(1, ctx.clone());
             let _ = self.db.update_console_order_and_enabled(&self.consoles);
         }
 
@@ -566,12 +566,26 @@ impl eframe::App for RetroRomsApp {
                     );
 
                     if category_changed || refresh_clicked {
-                        self.trigger_load_games(1);
+                        self.trigger_load_games(1, ctx.clone());
                     }
 
                     ui.add_space(8.0);
                     ui.separator();
                     ui.add_space(8.0);
+
+                    if self.is_loading && self.games.is_empty() {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(60.0);
+                            ui.spinner();
+                            ui.add_space(8.0);
+                            ui.label(
+                                egui::RichText::new("Загрузка игр с Emu-Land.net...")
+                                    .color(current_theme.primary_color())
+                                    .size(16.0),
+                            );
+                        });
+                        return;
+                    }
 
                     // Filter and Sort Games
                     let mut display_games = self.games.clone();
@@ -634,10 +648,10 @@ impl eframe::App for RetroRomsApp {
                     }
 
                     if let Some(g) = game_clicked {
-                        self.trigger_load_rom_versions(g);
+                        self.trigger_load_rom_versions(g, ctx.clone());
                     }
                     if let Some(g) = download_clicked {
-                        self.trigger_load_rom_versions(g);
+                        self.trigger_load_rom_versions(g, ctx.clone());
                     }
                     if let Some((g, is_fav)) = favorite_toggled {
                         let _ = self.db.set_game_favorite(&g, is_fav);
@@ -652,7 +666,7 @@ impl eframe::App for RetroRomsApp {
                         self.play_game(&g);
                     }
                     if let Some(p) = page_changed {
-                        self.trigger_load_games(p);
+                        self.trigger_load_games(p, ctx.clone());
                     }
                 }
                 NavTab::Downloads => {
@@ -714,10 +728,10 @@ impl eframe::App for RetroRomsApp {
                     );
 
                     if let Some(g) = game_clicked {
-                        self.trigger_load_rom_versions(g);
+                        self.trigger_load_rom_versions(g, ctx.clone());
                     }
                     if let Some(g) = download_clicked {
-                        self.trigger_load_rom_versions(g);
+                        self.trigger_load_rom_versions(g, ctx.clone());
                     }
                     if let Some((g, is_fav)) = favorite_toggled {
                         let _ = self.db.set_game_favorite(&g, is_fav);
@@ -769,7 +783,7 @@ impl eframe::App for RetroRomsApp {
         );
 
         if let Some((game, ver)) = download_version_selected {
-            self.start_game_download(game, Some(ver));
+            self.start_game_download(game, Some(ver), ctx.clone());
         }
         if let Some(g) = modal_play_clicked {
             self.play_game(&g);
@@ -834,7 +848,6 @@ impl eframe::App for RetroRomsApp {
 }
 
 fn main() -> eframe::Result<()> {
-    // Initialize tokio multi-thread runtime
     let rt = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

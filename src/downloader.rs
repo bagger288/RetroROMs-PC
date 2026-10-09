@@ -22,7 +22,7 @@ pub enum DownloadEvent {
         downloaded_bytes: u64,
         total_bytes: u64,
         speed_bytes_sec: u64,
-        percent: f32,
+        _percent: f32,
     },
     Completed {
         record_id: i64,
@@ -33,7 +33,7 @@ pub enum DownloadEvent {
     RequiresSelection(ZipExtractionRequest),
     Failed {
         record_id: i64,
-        game_id: String,
+        _game_id: String,
         error: String,
     },
 }
@@ -74,6 +74,7 @@ impl DownloadManager {
         delete_zip_after_unpack: bool,
         tx: mpsc::UnboundedSender<DownloadEvent>,
         cancelled: Arc<AtomicBool>,
+        ctx: egui::Context,
     ) {
         let scraper = self.scraper.clone();
         let client = self.client.clone();
@@ -94,6 +95,7 @@ impl DownloadManager {
                 game_id: game.id.clone(),
                 file_name: display_name.clone(),
             });
+            ctx.request_repaint();
 
             // 1. Resolve direct download URL if needed (e.g. from Emu-Land 302 redirect)
             let direct_url = match scraper
@@ -104,9 +106,10 @@ impl DownloadManager {
                 Err(e) => {
                     let _ = tx.send(DownloadEvent::Failed {
                         record_id,
-                        game_id: game.id.clone(),
+                        _game_id: game.id.clone(),
                         error: format!("Ошибка разрешения ссылки: {}", e),
                     });
+                    ctx.request_repaint();
                     return;
                 }
             };
@@ -127,9 +130,10 @@ impl DownloadManager {
                 Err(e) => {
                     let _ = tx.send(DownloadEvent::Failed {
                         record_id,
-                        game_id: game.id.clone(),
+                        _game_id: game.id.clone(),
                         error: format!("Ошибка сетевого запроса: {}", e),
                     });
+                    ctx.request_repaint();
                     return;
                 }
             };
@@ -137,9 +141,10 @@ impl DownloadManager {
             if !resp.status().is_success() {
                 let _ = tx.send(DownloadEvent::Failed {
                     record_id,
-                    game_id: game.id.clone(),
+                    _game_id: game.id.clone(),
                     error: format!("Сервер вернул статус HTTP {}", resp.status()),
                 });
+                ctx.request_repaint();
                 return;
             }
 
@@ -149,9 +154,10 @@ impl DownloadManager {
                     if ct_str.contains("text/html") {
                         let _ = tx.send(DownloadEvent::Failed {
                             record_id,
-                            game_id: game.id.clone(),
+                            _game_id: game.id.clone(),
                             error: "Сервер вернул HTML страницу вместо файла (защита от скачивания)".into(),
                         });
+                        ctx.request_repaint();
                         return;
                     }
                 }
@@ -163,9 +169,10 @@ impl DownloadManager {
                 Err(e) => {
                     let _ = tx.send(DownloadEvent::Failed {
                         record_id,
-                        game_id: game.id.clone(),
+                        _game_id: game.id.clone(),
                         error: format!("Не удалось создать временный файл: {}", e),
                     });
+                    ctx.request_repaint();
                     return;
                 }
             };
@@ -181,9 +188,10 @@ impl DownloadManager {
                     let _ = fs::remove_file(&temp_file_path);
                     let _ = tx.send(DownloadEvent::Failed {
                         record_id,
-                        game_id: game.id.clone(),
+                        _game_id: game.id.clone(),
                         error: "Загрузка отменена пользователем".into(),
                     });
+                    ctx.request_repaint();
                     return;
                 }
 
@@ -193,9 +201,10 @@ impl DownloadManager {
                         let _ = fs::remove_file(&temp_file_path);
                         let _ = tx.send(DownloadEvent::Failed {
                             record_id,
-                            game_id: game.id.clone(),
+                            _game_id: game.id.clone(),
                             error: format!("Ошибка при чтении потока: {}", e),
                         });
+                        ctx.request_repaint();
                         return;
                     }
                 };
@@ -204,9 +213,10 @@ impl DownloadManager {
                     let _ = fs::remove_file(&temp_file_path);
                     let _ = tx.send(DownloadEvent::Failed {
                         record_id,
-                        game_id: game.id.clone(),
+                        _game_id: game.id.clone(),
                         error: format!("Ошибка записи на диск: {}", e),
                     });
+                    ctx.request_repaint();
                     return;
                 }
 
@@ -234,8 +244,9 @@ impl DownloadManager {
                         downloaded_bytes: downloaded,
                         total_bytes: total_size,
                         speed_bytes_sec: current_speed,
-                        percent,
+                        _percent: percent,
                     });
+                    ctx.request_repaint();
                 }
             }
 
@@ -279,7 +290,7 @@ impl DownloadManager {
                             Err(e) => {
                                 let _ = tx.send(DownloadEvent::Failed {
                                     record_id,
-                                    game_id: game.id.clone(),
+                                    _game_id: game.id.clone(),
                                     error: format!("Ошибка распаковки: {}", e),
                                 });
                             }
@@ -305,9 +316,10 @@ impl DownloadManager {
                             if let Err(copy_err) = fs::copy(&temp_file_path, &final_path) {
                                 let _ = tx.send(DownloadEvent::Failed {
                                     record_id,
-                                    game_id: game.id.clone(),
+                                    _game_id: game.id.clone(),
                                     error: format!("Не удалось сохранить файл: {}", copy_err),
                                 });
+                                ctx.request_repaint();
                                 return;
                             }
                             let _ = fs::remove_file(&temp_file_path);
@@ -337,6 +349,8 @@ impl DownloadManager {
                     message: format!("Сохранено в {}", final_path.display()),
                 });
             }
+
+            ctx.request_repaint();
         });
     }
 }
