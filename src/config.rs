@@ -13,6 +13,8 @@ pub struct AppSettings {
     pub emulator_paths: HashMap<String, String>,
     pub emulator_args: HashMap<String, String>,
     pub show_only_enabled_consoles: bool,
+    #[serde(default)]
+    pub last_console_slug: Option<String>,
 }
 
 impl Default for AppSettings {
@@ -39,6 +41,7 @@ impl Default for AppSettings {
             emulator_paths: default_emus,
             emulator_args: HashMap::new(),
             show_only_enabled_consoles: true,
+            last_console_slug: Some("dendy".to_string()),
         }
     }
 }

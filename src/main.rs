@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use eframe::egui;
 use egui::{CentralPanel, RichText, SidePanel, TopBottomPanel};
 use retroms_desktop::config::AppSettings;
@@ -109,6 +111,16 @@ impl RetroRomsApp {
         let download_manager = DownloadManager::new(tx);
         let scraper = EmuLandClient::new();
 
+        let selected_console_idx = if let Some(slug) = &settings.last_console_slug {
+            consoles
+                .iter()
+                .position(|c| c.is_enabled && c.slug == *slug)
+                .or_else(|| consoles.iter().position(|c| c.is_enabled))
+                .unwrap_or(0)
+        } else {
+            consoles.iter().position(|c| c.is_enabled).unwrap_or(0)
+        };
+
         let mut app = Self {
             db,
             settings,
@@ -117,7 +129,7 @@ impl RetroRomsApp {
             view_mode,
             sort_option: SortOption::Default,
             consoles,
-            selected_console_idx: 0,
+            selected_console_idx,
             catalog_games: Vec::new(),
             categories: Vec::new(),
             selected_category: "top".to_string(),
@@ -537,6 +549,10 @@ impl eframe::App for RetroRomsApp {
                 );
 
                 if console_changed {
+                    if let Some(c) = self.consoles.get(self.selected_console_idx) {
+                        self.settings.last_console_slug = Some(c.slug.clone());
+                        let _ = self.settings.save();
+                    }
                     self.selected_category = "top".to_string();
                     self.current_page = 1;
                     self.trigger_load_games_sync();
