@@ -1,24 +1,10 @@
 use crate::models::{CatalogCategory, GameCard, GamesPageResult, RomFileVersion};
 use regex::Regex;
 use scraper::{Html, Selector};
-use serde_json::Value;
-use std::sync::LazyLock;
-use std::time::Duration;
+use std::collections::HashSet;
 
 pub const BASE_URL: &str = "https://www.emu-land.net";
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
-
-static RE_ID: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"id=([0-9]+)").expect("Invalid regex")
-});
-
-static RE_FID: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"fid=([0-9]+)").expect("Invalid regex")
-});
-
-static RE_YEAR: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"([12][0-9]{3})").expect("Invalid regex")
-});
 
 pub fn get_game_subpath(slug: &str) -> &'static str {
     match slug.to_lowercase().as_str() {
@@ -28,17 +14,20 @@ pub fn get_game_subpath(slug: &str) -> &'static str {
     }
 }
 
-pub fn normalize_image_url(raw: &str) -> Option<String> {
-    if raw.trim().is_empty() {
+pub fn normalize_image_url(src: &str) -> Option<String> {
+    let clean = src.trim();
+    if clean.is_empty() {
         return None;
     }
-    let mut url = raw.trim().replace("&amp;", "&").replace("\\/", "/");
-    if url.starts_with("//") {
-        url = format!("https:{}", url);
-    } else if url.starts_with('/') {
-        url = format!("{}{}", BASE_URL, url);
+    if clean.starts_with("//") {
+        Some(format!("https:{}", clean))
+    } else if clean.starts_with('/') {
+        Some(format!("{}{}", BASE_URL, clean))
+    } else if clean.starts_with("http://") || clean.starts_with("https://") {
+        Some(clean.to_string())
+    } else {
+        Some(format!("{}/{}", BASE_URL, clean))
     }
-    Some(url.replace(' ', "%20"))
 }
 
 #[derive(Clone)]
@@ -57,16 +46,16 @@ impl EmuLandClient {
     pub fn new() -> Self {
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
-            .timeout(Duration::from_secs(30))
+            .timeout(std::time::Duration::from_secs(25))
             .build()
-            .unwrap_or_default();
+            .unwrap_or_else(|_| reqwest::Client::new());
 
         let no_redirect_client = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .timeout(Duration::from_secs(30))
             .redirect(reqwest::redirect::Policy::none())
+            .user_agent(USER_AGENT)
+            .timeout(std::time::Duration::from_secs(25))
             .build()
-            .unwrap_or_default();
+            .unwrap_or_else(|_| reqwest::Client::new());
 
         Self {
             client,
@@ -76,346 +65,225 @@ impl EmuLandClient {
 
     pub fn get_initial_categories(slug: &str) -> Vec<CatalogCategory> {
         let s = slug.to_lowercase();
-        match s.as_str() {
-            "dendy" | "genesis" | "snes" | "gb" | "gbc" => {
-                let mut list = vec![
-                    CatalogCategory { key: "top".into(), label: "🔥 Популярные".into() },
-                    CatalogCategory { key: "best".into(), label: "★ Лучшие".into() },
-                    CatalogCategory { key: "homebrew".into(), label: "🛠 Homebrew".into() },
-                    CatalogCategory { key: "misc".into(), label: "📁 Прочее".into() },
-                    CatalogCategory { key: "0-9".into(), label: "0-9".into() },
-                ];
-                for c in 'a'..='z' {
-                    list.push(CatalogCategory { key: c.to_string(), label: c.to_uppercase().to_string() });
-                }
-                list
-            }
-            "gba" => {
-                let mut list = vec![
-                    CatalogCategory { key: "top".into(), label: "🔥 Популярные".into() },
-                    CatalogCategory { key: "best".into(), label: "★ Лучшие".into() },
-                    CatalogCategory { key: "misc".into(), label: "📁 Прочее".into() },
-                    CatalogCategory { key: "0-9".into(), label: "0-9".into() },
-                ];
-                for c in 'a'..='z' {
-                    list.push(CatalogCategory { key: c.to_string(), label: c.to_uppercase().to_string() });
-                }
-                list
-            }
-            "n64" => {
-                let mut list = vec![
-                    CatalogCategory { key: "top".into(), label: "🔥 Популярные".into() },
-                    CatalogCategory { key: "rating".into(), label: "★ Рейтинг".into() },
-                    CatalogCategory { key: "misc".into(), label: "📁 Прочее".into() },
-                    CatalogCategory { key: "0-9".into(), label: "0-9".into() },
-                ];
-                for c in 'a'..='z' {
-                    list.push(CatalogCategory { key: c.to_string(), label: c.to_uppercase().to_string() });
-                }
-                list
-            }
-            "segacd" | "sms" | "pce" => {
-                let mut list = vec![
-                    CatalogCategory { key: "top".into(), label: "🔥 Популярные".into() },
-                    CatalogCategory { key: "best".into(), label: "★ Лучшие".into() },
-                    CatalogCategory { key: "0-9".into(), label: "0-9".into() },
-                ];
-                for c in 'a'..='z' {
-                    list.push(CatalogCategory { key: c.to_string(), label: c.to_uppercase().to_string() });
-                }
-                list
-            }
-            "3do" => {
-                let mut list = vec![
-                    CatalogCategory { key: "top".into(), label: "🔥 Популярные".into() },
-                ];
-                for c in 'a'..='z' {
-                    list.push(CatalogCategory { key: c.to_string(), label: c.to_uppercase().to_string() });
-                }
-                list
-            }
-            _ => vec![CatalogCategory { key: "all".into(), label: "Все игры".into() }],
-        }
-    }
-
-    pub async fn fetch_categories(&self, console_slug: &str, section: &str) -> Vec<CatalogCategory> {
-        let subpath = get_game_subpath(console_slug);
-        let url = format!("{}/{}/{}/{}", BASE_URL, section, console_slug, subpath);
-
-        let resp = match self.client.get(&url).send().await {
-            Ok(r) => r,
-            Err(_) => return Self::get_initial_categories(console_slug),
-        };
-
-        let html_text = match resp.text().await {
-            Ok(t) => t,
-            Err(_) => return Self::get_initial_categories(console_slug),
-        };
-
-        let document = Html::parse_document(&html_text);
-        let pagelist_sel = Selector::parse("#pagelist_top, .pagelist").unwrap();
-        let add_sel = Selector::parse(".add a").unwrap();
-        let abc_sel = Selector::parse(".abc a").unwrap();
-
-        if let Some(pagelist) = document.select(&pagelist_sel).next() {
-            let mut categories = Vec::new();
-            let mut seen_keys = std::collections::HashSet::new();
-
-            for a in pagelist.select(&add_sel) {
-                if let Some(href) = a.value().attr("href") {
-                    let trimmed = href.trim_end_matches('/');
-                    let key = trimmed.split('/').last().unwrap_or("").to_lowercase();
-                    let text = a.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                    if !key.is_empty() && seen_keys.insert(key.clone()) {
-                        let label = match key.as_str() {
-                            "top" => "🔥 Популярные".to_string(),
-                            "best" => "★ Лучшие".to_string(),
-                            "rating" => "★ Рейтинг".to_string(),
-                            "homebrew" => "🛠 Homebrew".to_string(),
-                            "misc" => "📁 Прочее".to_string(),
-                            _ => text,
-                        };
-                        categories.push(CatalogCategory { key, label });
-                    }
-                }
-            }
-
-            for a in pagelist.select(&abc_sel) {
-                if let Some(href) = a.value().attr("href") {
-                    let trimmed = href.trim_end_matches('/');
-                    let key = trimmed.split('/').last().unwrap_or("").to_lowercase();
-                    let text = a.text().collect::<Vec<_>>().join(" ").trim().to_uppercase();
-                    if !key.is_empty() && seen_keys.insert(key.clone()) {
-                        categories.push(CatalogCategory { key, label: text });
-                    }
-                }
-            }
-
-            if !categories.is_empty() {
-                return categories;
-            }
+        // Consoles with only 1 page on Emu-Land
+        if s == "psx" || s == "2600" || s == "5200" || s == "7800" || s == "coleco" || s == "vectrex" || s == "intellivision" || s == "arcadia" || s == "chaf" {
+            return vec![CatalogCategory {
+                key: "all".to_string(),
+                label: "Все игры".to_string(),
+            }];
         }
 
-        Self::get_initial_categories(console_slug)
+        let mut cats = Vec::new();
+        if s != "neogeocd" && s != "jaguar" {
+            cats.push(CatalogCategory {
+                key: "top".to_string(),
+                label: "🔥 Популярные".to_string(),
+            });
+        }
+        if s != "jaguar" {
+            cats.push(CatalogCategory {
+                key: "best".to_string(),
+                label: "★ Лучшие".to_string(),
+            });
+        }
+        cats.push(CatalogCategory {
+            key: "0-9".to_string(),
+            label: "0-9".to_string(),
+        });
+        for c in b'a'..=b'z' {
+            let ch = (c as char).to_string();
+            cats.push(CatalogCategory {
+                key: ch.clone(),
+                label: ch.to_uppercase(),
+            });
+        }
+        cats
     }
 
     pub async fn fetch_games_page(
         &self,
-        console_slug: &str,
+        slug: &str,
         console_name: &str,
         section: &str,
         category: &str,
         page: usize,
     ) -> Result<GamesPageResult, Box<dyn std::error::Error + Send + Sync>> {
-        let subpath = get_game_subpath(console_slug);
-
+        let subpath = get_game_subpath(slug);
         let url = if category == "all" || category.is_empty() {
             if page <= 1 {
-                format!("{}/{}/{}/{}", BASE_URL, section, console_slug, subpath)
+                format!("{}/{}/{}/{}", BASE_URL, section, slug, subpath)
             } else {
-                format!("{}/{}/{}/{}/{}", BASE_URL, section, console_slug, subpath, page)
+                format!("{}/{}/{}/{}/{}", BASE_URL, section, slug, subpath, page)
             }
         } else if page <= 1 {
-            format!("{}/{}/{}/{}/{}", BASE_URL, section, console_slug, subpath, category)
+            format!("{}/{}/{}/{}/{}", BASE_URL, section, slug, subpath, category)
         } else {
-            format!(
-                "{}/{}/{}/{}/{}/{}",
-                BASE_URL, section, console_slug, subpath, category, page
-            )
+            format!("{}/{}/{}/{}/{}/{}", BASE_URL, section, slug, subpath, category, page)
         };
 
-        let resp = self
-            .client
-            .get(&url)
-            .header("Referer", format!("{}/{}/{}", BASE_URL, section, console_slug))
-            .send()
-            .await?;
+        let resp = self.client.get(&url).send().await?;
+        let html_text = resp.text().await?;
+        let document = Html::parse_document(&html_text);
 
-        let html = resp.text().await?;
-        let document = Html::parse_document(&html);
-
-        let mut games = Vec::new();
-
-        // Emu-Land uses .fcontainer for game cards
-        let container_sel = Selector::parse(".fcontainer").unwrap();
-        let title_sel = Selector::parse(".rheader a, h4.rheader a, .rheader span.hand, h4 a").unwrap();
-        let img_sel = Selector::parse(".picture img, img.pixelated, img.game-screens").unwrap();
-        let finfo_sel = Selector::parse(".finfo li").unwrap();
-        let fbottom_sel = Selector::parse(".fbottom li").unwrap();
-        let dl_btn_sel = Selector::parse(".btn-sdl, .btn-dl, [onclick*='getmfl'], [onclick*='getfile']").unwrap();
-
-        for container in document.select(&container_sel) {
-            let title_elem = container.select(&title_sel).next();
-            let title = match title_elem {
-                Some(el) => el.text().collect::<Vec<_>>().join(" ").trim().to_string(),
-                None => continue,
-            };
-            if title.is_empty() {
-                continue;
-            }
-
-            let game_page_href = title_elem
-                .and_then(|el| el.value().attr("href"))
-                .unwrap_or("");
-
-            let game_page_slug = if !game_page_href.is_empty() {
-                Some(game_page_href.trim_start_matches('/').to_string())
-            } else {
-                None
-            };
-
-            // Cover and screenshots
-            let mut cover_url = None;
-            let mut screenshot_urls = Vec::new();
-
-            if let Some(img_elem) = container.select(&img_sel).next() {
-                if let Some(src) = img_elem.value().attr("src") {
-                    cover_url = normalize_image_url(src);
-                    if let Some(c) = &cover_url {
-                        screenshot_urls.push(c.clone());
-                    }
-                }
-
-                // Check for data-gallery JSON
-                if let Some(gallery_attr) = img_elem.value().attr("data-gallery") {
-                    if let Ok(val) = serde_json::from_str::<Value>(gallery_attr) {
-                        if let Some(list) = val.get("list").and_then(|l| l.as_array()) {
-                            for item in list {
-                                if let Some(src_str) = item.get("src").and_then(|s| s.as_str()) {
-                                    if let Some(norm) = normalize_image_url(src_str) {
-                                        if !screenshot_urls.contains(&norm) {
-                                            screenshot_urls.push(norm);
-                                        }
-                                    }
-                                }
+        // 1. Parse categories from #pagelist_top
+        let mut available_categories = Vec::new();
+        let pagelist_sel = Selector::parse("#pagelist_top, .pagelist").unwrap();
+        let a_sel = Selector::parse("a").unwrap();
+        if let Some(pl) = document.select(&pagelist_sel).next() {
+            for a in pl.select(&a_sel) {
+                if let Some(href) = a.value().attr("href") {
+                    let parts: Vec<&str> = href.trim_matches('/').split('/').collect();
+                    if let Some(last_part) = parts.last() {
+                        let key = last_part.to_string();
+                        // Ignore pure page numbers
+                        if key.parse::<usize>().is_err() && key != subpath && key != slug {
+                            let raw_text = a.text().collect::<Vec<_>>().join("").trim().to_string();
+                            let label = match key.as_str() {
+                                "top" => "🔥 Популярные".to_string(),
+                                "best" => "★ Лучшие".to_string(),
+                                "rating" => "★ Рейтинг".to_string(),
+                                "homebrew" => "🛠 Homebrew".to_string(),
+                                "misc" => "📁 Прочее".to_string(),
+                                _ => raw_text,
+                            };
+                            if !available_categories.iter().any(|c: &CatalogCategory| c.key == key) {
+                                available_categories.push(CatalogCategory { key, label });
                             }
                         }
                     }
                 }
             }
+        }
 
-            // Metadata from .finfo
+        if available_categories.is_empty() {
+            available_categories = Self::get_initial_categories(slug);
+        }
+
+        // 2. Parse pagination (.num a)
+        let num_a_sel = Selector::parse(".num a, .pagelist .num a").unwrap();
+        let mut max_page = page;
+        let mut has_next = false;
+        for a in document.select(&num_a_sel) {
+            let t = a.text().collect::<Vec<_>>().join("").trim().to_string();
+            if let Ok(p_num) = t.parse::<usize>() {
+                if p_num > max_page {
+                    max_page = p_num;
+                }
+            }
+            if t.contains("Далее") || t.contains('»') {
+                has_next = true;
+            }
+        }
+
+        // 3. Parse games (.fcontainer, .glist-item, .game-item, table rows)
+        let mut games = Vec::new();
+        let fcontainer_sel = Selector::parse(".fcontainer").unwrap();
+        let rheader_a_sel = Selector::parse(".rheader a, h4 a, .title a").unwrap();
+        let img_sel = Selector::parse(".picture img, .ss-area img, img.game-screens, img").unwrap();
+        let btn_sdl_sel = Selector::parse("[onclick*='getmfl'], .btn-sdl, a[href*='act=getmfl']").unwrap();
+        let mfile_regex = Regex::new(r"id=([0-9]+)").unwrap();
+        let finfo_sel = Selector::parse(".finfo li, .finfo").unwrap();
+
+        for container in document.select(&fcontainer_sel) {
+            let title_el = container.select(&rheader_a_sel).next();
+            let title = match title_el {
+                Some(el) => el.text().collect::<Vec<_>>().join("").trim().to_string(),
+                None => continue,
+            };
+
+            let game_page_slug = title_el
+                .and_then(|el| el.value().attr("href"))
+                .map(|href| href.trim_matches('/').split('/').last().unwrap_or("").to_string());
+
+            let cover_url = container
+                .select(&img_sel)
+                .find_map(|img| img.value().attr("src"))
+                .and_then(normalize_image_url);
+
+            let mut mfile_id = None;
+            if let Some(sdl) = container.select(&btn_sdl_sel).next() {
+                if let Some(onclick) = sdl.value().attr("onclick") {
+                    if let Some(cap) = mfile_regex.captures(onclick) {
+                        mfile_id = Some(cap[1].to_string());
+                    }
+                }
+                if mfile_id.is_none() {
+                    if let Some(href) = sdl.value().attr("href") {
+                        if let Some(cap) = mfile_regex.captures(href) {
+                            mfile_id = Some(cap[1].to_string());
+                        }
+                    }
+                }
+            }
+
             let mut genre = "Action".to_string();
-            let mut developer = "Unknown".to_string();
-            let mut publisher = "Unknown".to_string();
-            let mut year = "N/A".to_string();
-
+            let mut year = "".to_string();
+            let mut developer = "".to_string();
             for li in container.select(&finfo_sel) {
-                let text = li.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                let lower = text.to_lowercase();
-                if lower.contains("жанр:") {
-                    genre = text.split("Жанр:").nth(1).unwrap_or("Action").trim().to_string();
-                } else if lower.contains("разработчик:") {
-                    developer = text.split("Разработчик:").nth(1).unwrap_or("Unknown").trim().to_string();
-                } else if lower.contains("издатель:") {
-                    publisher = text.split("Издатель:").nth(1).unwrap_or("Unknown").trim().to_string();
-                } else if lower.contains("год выпуска:") {
-                    if let Some(cap) = RE_YEAR.captures(&text) {
+                let text = li.text().collect::<Vec<_>>().join(" ");
+                if text.contains("Жанр:") {
+                    genre = text.replace("•", "").replace("Жанр:", "").trim().to_string();
+                } else if text.contains("Год") {
+                    let re_yr = Regex::new(r"(19\d\d|20\d\d)").unwrap();
+                    if let Some(cap) = re_yr.captures(&text) {
                         year = cap[1].to_string();
                     }
+                } else if text.contains("Разработчик:") {
+                    developer = text.replace("•", "").replace("Разработчик:", "").trim().to_string();
                 }
             }
 
-            // File size
-            let mut file_size = "ROM".to_string();
-            for li in container.select(&fbottom_sel) {
-                let text = li.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                if text.to_lowercase().contains("размер:") {
-                    file_size = text.split("Размер:").nth(1).unwrap_or("ROM").trim().to_string();
-                }
-            }
-
-            // Mfile ID detection from download button onclick
-            let mut mfile_id = None;
-            for btn in container.select(&dl_btn_sel) {
-                if let Some(onclick) = btn.value().attr("onclick") {
-                    if let Some(cap) = RE_ID.captures(onclick) {
-                        mfile_id = Some(cap[1].to_string());
-                        break;
-                    }
-                }
-            }
-
-            // Fallback for mfile_id from pict_ or mfile_ element IDs
-            if mfile_id.is_none() {
-                let inner_html = container.html();
-                if let Some(cap) = RE_ID.captures(&inner_html) {
-                    mfile_id = Some(cap[1].to_string());
-                }
-            }
-
-            let id = format!("{}_{}", console_slug, game_page_slug.as_deref().unwrap_or(&title));
+            let id = mfile_id.clone().unwrap_or_else(|| {
+                game_page_slug.clone().unwrap_or_else(|| title.to_lowercase().replace(' ', "_"))
+            });
 
             games.push(GameCard {
                 id,
-                console_slug: console_slug.to_string(),
+                console_slug: slug.to_string(),
                 console_name: console_name.to_string(),
                 section: section.to_string(),
                 title,
                 original_title: None,
                 genre,
                 year,
-                publisher,
+                publisher: "Unknown".to_string(),
                 developer,
                 rating: 4.8,
-                file_size,
+                file_size: "ROM".to_string(),
                 cover_url,
-                screenshot_urls,
+                screenshot_urls: Vec::new(),
                 description: String::new(),
-                download_url: url.clone(),
+                download_url: String::new(),
                 mfile_id,
                 game_page_slug,
-                regions: vec!["USA".to_string()],
+                regions: vec!["US".to_string()],
                 is_favorite: false,
                 is_downloaded: false,
                 local_file_path: None,
             });
         }
 
-        // Pagination calculation from .num a
-        let num_sel = Selector::parse(".num a, div.num a, .pagination a").unwrap();
-        let mut max_page = page;
-        for a in document.select(&num_sel) {
-            let t = a.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if let Ok(p) = t.parse::<usize>() {
-                if p > max_page {
-                    max_page = p;
-                }
-            }
-            if let Some(href) = a.value().attr("href") {
-                if let Some(cap) = RE_ID.captures(href) {
-                    if let Ok(p) = cap[1].parse::<usize>() {
-                        if p > max_page {
-                            max_page = p;
-                        }
-                    }
-                }
-            }
-        }
-
-        let has_next_page = max_page > page;
-
         Ok(GamesPageResult {
             games,
             current_page: page,
             total_pages: max_page.max(1),
-            has_next_page,
-            available_categories: Vec::new(),
+            has_next_page: has_next || (page < max_page),
+            available_categories,
         })
     }
 
     pub async fn fetch_rom_versions(
         &self,
-        console_slug: &str,
         section: &str,
+        slug: &str,
         mfile_id: &str,
     ) -> Result<Vec<RomFileVersion>, Box<dyn std::error::Error + Send + Sync>> {
-        let subpath = get_game_subpath(console_slug);
+        let subpath = get_game_subpath(slug);
         let url = format!(
             "{}/{}/{}/{}?act=getmfl&id={}",
-            BASE_URL, section, console_slug, subpath, mfile_id
+            BASE_URL, section, slug, subpath, mfile_id
         );
-        let referer = format!("{}/{}/{}/{}", BASE_URL, section, console_slug, subpath);
+        let referer = format!("{}/{}/{}/{}", BASE_URL, section, slug, subpath);
 
         let resp = self
             .client
@@ -426,178 +294,132 @@ impl EmuLandClient {
             .await?;
 
         let html = resp.text().await?;
-        let document = Html::parse_fragment(&html);
+        let document = Html::parse_document(&html);
 
+        let collaps_sel = Selector::parse(".collaps-item, .romlist-area, body").unwrap();
+        let title_sel = Selector::parse(".title, .head").unwrap();
+        let item_sel = Selector::parse(".item, li, tr").unwrap();
+        let a_sel = Selector::parse("a[href*='fid=']").unwrap();
+        let size_sel = Selector::parse(".size, span").unwrap();
+
+        let fid_regex = Regex::new(r"fid=([0-9]+)").unwrap();
         let mut versions = Vec::new();
-        let group_sel = Selector::parse(".collaps-item, .collaps, .mfile-block, .romlist-group").unwrap();
-        let group_title_sel = Selector::parse(".title span, .title, .group-header").unwrap();
-        let item_sel = Selector::parse(".item, .file-item, li").unwrap();
-        let link_sel = Selector::parse("a[href*='fid='], a[href*='act=']").unwrap();
-        let size_sel = Selector::parse(".size, small, .fsize").unwrap();
 
-        for group in document.select(&group_sel) {
-            let category_name = group
-                .select(&group_title_sel)
+        for block in document.select(&collaps_sel) {
+            let group_name = block
+                .select(&title_sel)
                 .next()
-                .map(|el| el.text().collect::<Vec<_>>().join(" ").trim().to_string())
+                .map(|e| e.text().collect::<Vec<_>>().join("").trim().to_string())
                 .unwrap_or_else(|| "Основные".to_string());
 
-            for item in group.select(&item_sel) {
-                if let Some(link) = item.select(&link_sel).next() {
-                    let href = link.value().attr("href").unwrap_or("");
-                    let name = link.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                    if name.is_empty() {
-                        continue;
-                    }
-
-                    let fid = RE_FID
-                        .captures(href)
-                        .map(|c| c[1].to_string())
-                        .unwrap_or_else(|| mfile_id.to_string());
-
+            for item in block.select(&item_sel) {
+                if let Some(a) = item.select(&a_sel).next() {
+                    let href = a.value().attr("href").unwrap_or("");
+                    let fid = match fid_regex.captures(href) {
+                        Some(c) => c[1].to_string(),
+                        None => continue,
+                    };
+                    let name = a.text().collect::<Vec<_>>().join("").trim().to_string();
                     let size = item
                         .select(&size_sel)
                         .next()
-                        .map(|el| el.text().collect::<Vec<_>>().join(" ").trim().to_string())
+                        .map(|s| s.text().collect::<Vec<_>>().join("").trim().to_string())
                         .unwrap_or_else(|| "ROM".to_string());
 
-                    let full_download_url = if href.starts_with("http") {
-                        href.to_string()
-                    } else if href.starts_with('/') {
-                        format!("{}{}", BASE_URL, href)
-                    } else {
-                        format!(
-                            "{}/{}/{}/{}?act=getmfl&id={}&fid={}",
-                            BASE_URL, section, console_slug, subpath, mfile_id, fid
-                        )
-                    };
+                    let download_url = format!(
+                        "{}/{}/{}/{}?act=getmfl&id={}&fid={}",
+                        BASE_URL, section, slug, subpath, mfile_id, fid
+                    );
 
-                    // Detect region or type
-                    let region_or_type = if name.contains("(R)") || name.to_lowercase().contains("rus") || name.contains("Russian") {
+                    let name_upper = name.to_uppercase();
+                    let region_or_type = if name_upper.contains("(R)") || name_upper.contains("(RUS)") || name_upper.contains("RUSSIAN") {
                         "RUS".to_string()
-                    } else if name.contains("(U)") || name.contains("(USA)") {
+                    } else if name_upper.contains("(U)") || name_upper.contains("(USA)") {
                         "USA".to_string()
-                    } else if name.contains("(E)") || name.contains("(Europe)") {
+                    } else if name_upper.contains("(E)") || name_upper.contains("(EUROPE)") {
                         "EUR".to_string()
-                    } else if name.contains("(J)") || name.contains("(Japan)") {
+                    } else if name_upper.contains("(J)") || name_upper.contains("(JAPAN)") {
                         "JAP".to_string()
-                    } else if name.contains("[h") || name.to_lowercase().contains("hack") {
+                    } else if name_upper.contains("[H") || name_upper.contains("HACK") {
                         "HACK".to_string()
-                    } else if category_name.to_lowercase().contains("goodset") || name.to_lowercase().contains("goodset") {
-                        "GOODSET".to_string()
                     } else {
-                        "OTHER".to_string()
+                        "ROM".to_string()
                     };
 
                     versions.push(RomFileVersion {
                         fid,
                         name,
                         size,
-                        category: category_name.clone(),
-                        download_url: full_download_url,
+                        category: group_name.clone(),
+                        download_url,
                         region_or_type,
                     });
                 }
             }
         }
 
-        // Fallback: search any links with fid if no .collaps-item found
-        if versions.is_empty() {
-            for link in document.select(&link_sel) {
-                let href = link.value().attr("href").unwrap_or("");
-                let name = link.text().collect::<Vec<_>>().join(" ").trim().to_string();
-                if name.is_empty() {
-                    continue;
-                }
-                let fid = RE_FID
-                    .captures(href)
-                    .map(|c| c[1].to_string())
-                    .unwrap_or_else(|| mfile_id.to_string());
-
-                let full_download_url = if href.starts_with("http") {
-                    href.to_string()
-                } else {
-                    format!(
-                        "{}/{}/{}/{}?act=getmfl&id={}&fid={}",
-                        BASE_URL, section, console_slug, subpath, mfile_id, fid
-                    )
-                };
-
-                versions.push(RomFileVersion {
-                    fid,
-                    name,
-                    size: "ROM".to_string(),
-                    category: "Основные".to_string(),
-                    download_url: full_download_url,
-                    region_or_type: "USA".to_string(),
-                });
-            }
-        }
-
         Ok(versions)
     }
 
-    pub async fn resolve_direct_download_url(
+    pub async fn get_direct_download_url(
         &self,
-        target_url: &str,
+        getmfl_url: &str,
         referer: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let resp = self
             .no_redirect_client
-            .get(target_url)
+            .get(getmfl_url)
             .header("Referer", referer)
             .send()
             .await?;
 
         if let Some(loc) = resp.headers().get(reqwest::header::LOCATION) {
-            let loc_str = loc.to_str()?;
-            if loc_str.starts_with("http") {
-                return Ok(loc_str.to_string());
-            } else if loc_str.starts_with('/') {
-                return Ok(format!("{}{}", BASE_URL, loc_str));
-            }
+            let location_str = loc.to_str()?;
+            return Ok(location_str.to_string());
         }
 
-        Ok(target_url.to_string())
+        // If no 302 Location header, check if final url changed
+        Ok(resp.url().to_string())
     }
 
     pub async fn fetch_game_page_details(
         &self,
-        game_page_slug: &str,
-    ) -> Result<(String, Vec<String>), Box<dyn std::error::Error + Send + Sync>> {
-        let url = if game_page_slug.starts_with("http") {
-            game_page_slug.to_string()
-        } else {
-            format!("{}/{}", BASE_URL, game_page_slug)
+        game: &mut GameCard,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let slug = match &game.game_page_slug {
+            Some(s) => s.as_str(),
+            None => return Ok(()),
         };
+        let subpath = get_game_subpath(&game.console_slug);
+        let url = format!("{}/{}/{}/{}/{}", BASE_URL, game.section, game.console_slug, subpath, slug);
 
         let resp = self.client.get(&url).send().await?;
         let html = resp.text().await?;
-        let document = Html::parse_document(&html);
+        let doc = Html::parse_document(&html);
 
-        let desc_sel = Selector::parse(".ftext p, .description p, #description, .desc").unwrap();
-        let mut desc_parts = Vec::new();
-        for p in document.select(&desc_sel) {
-            let text = p.text().collect::<Vec<_>>().join(" ").trim().to_string();
-            if !text.is_empty() {
-                desc_parts.push(text);
-            }
+        let desc_sel = Selector::parse(".ftext, .description, #content p").unwrap();
+        if let Some(p) = doc.select(&desc_sel).next() {
+            game.description = p.text().collect::<Vec<_>>().join(" ").trim().to_string();
         }
-        let description = desc_parts.join("\n\n");
 
-        let screenshot_sel = Selector::parse(".ss-area a.ss, .picture img, .ss-area img, a[href*='screenshots'] img").unwrap();
-        let mut screenshots = Vec::new();
-        for el in document.select(&screenshot_sel) {
-            let src = el.value().attr("href").or_else(|| el.value().attr("src"));
-            if let Some(src_str) = src {
-                if let Some(normalized) = normalize_image_url(src_str) {
-                    if !screenshots.contains(&normalized) {
-                        screenshots.push(normalized);
+        let img_sel = Selector::parse(".picture img, .game-screens, img").unwrap();
+        let mut screens = Vec::new();
+        for img in doc.select(&img_sel) {
+            if let Some(src) = img.value().attr("src") {
+                if let Some(norm) = normalize_image_url(src) {
+                    if !screens.contains(&norm) {
+                        screens.push(norm);
                     }
                 }
             }
         }
+        if !screens.is_empty() {
+            if game.cover_url.is_none() {
+                game.cover_url = Some(screens[0].clone());
+            }
+            game.screenshot_urls = screens;
+        }
 
-        Ok((description, screenshots))
+        Ok(())
     }
 }

@@ -3,74 +3,51 @@ use std::process::Command;
 
 pub fn pick_download_folder() -> Option<PathBuf> {
     rfd::FileDialog::new()
-        .set_title("Выберите папку для сохранения ROM-файлов")
+        .set_title("Выберите папку для сохранения ROMs")
         .pick_folder()
 }
 
-pub fn pick_executable_file(title: &str) -> Option<PathBuf> {
+pub fn pick_executable_file() -> Option<PathBuf> {
     rfd::FileDialog::new()
-        .set_title(title)
+        .set_title("Выберите исполняемый файл эмулятора")
         .pick_file()
 }
 
-pub fn reveal_in_file_explorer(path: &Path) -> Result<(), std::io::Error> {
+pub fn reveal_in_file_explorer(path: &Path) -> std::io::Result<()> {
     #[cfg(target_os = "windows")]
     {
-        if path.is_file() {
-            Command::new("explorer")
-                .arg(format!("/select,\"{}\"", path.display()))
-                .spawn()?;
-        } else {
-            Command::new("explorer")
-                .arg(path)
-                .spawn()?;
-        }
+        Command::new("explorer")
+            .arg("/select,")
+            .arg(path)
+            .spawn()?;
+        Ok(())
     }
-
     #[cfg(target_os = "macos")]
     {
-        if path.is_file() {
-            Command::new("open")
-                .arg("-R")
-                .arg(path)
-                .spawn()?;
-        } else {
-            Command::new("open")
-                .arg(path)
-                .spawn()?;
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        let target = if path.is_file() {
-            path.parent().unwrap_or(path)
-        } else {
-            path
-        };
-        Command::new("xdg-open")
-            .arg(target)
+        Command::new("open")
+            .arg("-R")
+            .arg(path)
             .spawn()?;
+        Ok(())
     }
-
-    Ok(())
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        if let Some(parent) = path.parent() {
+            let _ = open::that(parent);
+        } else {
+            let _ = open::that(path);
+        }
+        Ok(())
+    }
 }
 
-pub fn launch_emulator(
-    emulator_exe: &str,
-    rom_path: &Path,
-    custom_args: Option<&str>,
-) -> Result<(), std::io::Error> {
+pub fn launch_emulator(emulator_exe: &str, rom_path: &Path, args: &str) -> std::io::Result<()> {
     let mut cmd = Command::new(emulator_exe);
-
-    if let Some(args_str) = custom_args {
-        if !args_str.trim().is_empty() {
-            for arg in args_str.split_whitespace() {
-                cmd.arg(arg);
-            }
+    if !args.trim().is_empty() {
+        for arg in args.split_whitespace() {
+            cmd.arg(arg);
         }
     }
-
     cmd.arg(rom_path);
     cmd.spawn()?;
     Ok(())

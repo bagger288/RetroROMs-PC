@@ -34,9 +34,9 @@ impl SortOption {
     pub fn label(&self) -> &'static str {
         match self {
             SortOption::Default => "По умолчанию",
-            SortOption::RatingDesc => "Рейтинг ★",
-            SortOption::TitleAsc => "Имя (А-Я)",
-            SortOption::TitleDesc => "Имя (Я-А)",
+            SortOption::RatingDesc => "★ По рейтингу",
+            SortOption::TitleAsc => "А-Я По названию",
+            SortOption::TitleDesc => "Я-А По названию",
         }
     }
 }

@@ -27,11 +27,10 @@ pub fn render_catalog_grid(
         .id_salt("catalog_grid_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let available_width = ui.available_width();
+            let available_width = ui.available_width().max(300.0);
             let card_width = 190.0;
             let card_height = 280.0;
             let spacing = 12.0;
-
             let cols = ((available_width + spacing) / (card_width + spacing)).floor().max(1.0) as usize;
 
             let mut row_idx = 0;
@@ -68,7 +67,6 @@ pub fn render_catalog_grid(
                 ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                     ui.label(format!("Страница {} из {}", current_page, total_pages));
                 });
-
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let next_enabled = current_page < total_pages;
                     if ui
@@ -77,9 +75,7 @@ pub fn render_catalog_grid(
                     {
                         *on_page_changed = Some(current_page + 1);
                     }
-
                     ui.add_space(8.0);
-
                     let prev_enabled = current_page > 1;
                     if ui
                         .add_enabled(prev_enabled, egui::Button::new("◀ Назад"))
@@ -115,18 +111,27 @@ fn render_game_card(
         ui.set_height(height);
 
         ui.vertical(|ui| {
-            // Cover Image Area
+            // Cover Image Area with robust fallback
             let img_height = 140.0;
+            let mut image_rendered = false;
 
             if let Some(cover_url) = &game.cover_url {
-                ui.add(
-                    egui::Image::new(cover_url)
-                        .fit_to_exact_size(Vec2::new(width, img_height))
-                        .rounding(Rounding::same(6.0)),
-                );
-            } else {
+                if !cover_url.is_empty() {
+                    let resp = ui.add(
+                        egui::Image::new(cover_url)
+                            .fit_to_exact_size(Vec2::new(width, img_height))
+                            .rounding(Rounding::same(6.0)),
+                    );
+                    image_rendered = true;
+                    if resp.clicked() {
+                        *on_game_clicked = Some(game.clone());
+                    }
+                }
+            }
+
+            if !image_rendered {
                 Frame::none()
-                    .fill(Color32::from_black_alpha(100))
+                    .fill(Color32::from_rgb(26, 32, 48))
                     .rounding(Rounding::same(6.0))
                     .show(ui, |ui| {
                         ui.set_width(width);
