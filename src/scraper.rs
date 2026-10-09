@@ -1,7 +1,6 @@
 use crate::models::{CatalogCategory, GameCard, GamesPageResult, RomFileVersion};
 use regex::Regex;
 use scraper::{Html, Selector};
-use std::collections::HashSet;
 
 pub const BASE_URL: &str = "https://www.emu-land.net";
 pub const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";

@@ -7,9 +7,14 @@ pub fn pick_download_folder() -> Option<PathBuf> {
         .pick_folder()
 }
 
-pub fn pick_executable_file() -> Option<PathBuf> {
+pub fn pick_executable_file(title: &str) -> Option<PathBuf> {
+    let dialog_title = if title.is_empty() {
+        "Выберите исполняемый файл эмулятора"
+    } else {
+        title
+    };
     rfd::FileDialog::new()
-        .set_title("Выберите исполняемый файл эмулятора")
+        .set_title(dialog_title)
         .pick_file()
 }
 

@@ -1,9 +1,9 @@
 use crate::archive::{extract_selected_entries, extract_single_rom, scan_zip_rom_entries};
-use crate::models::{DownloadStatus, GameCard, ZipExtractionRequest};
+use crate::models::{GameCard, ZipExtractionRequest};
 use futures_util::StreamExt;
 use std::fs::File;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
@@ -212,7 +212,7 @@ impl DownloadManager {
                     if entries.is_empty() {
                         // Not a ZIP or contains no ROM entries: move file as is
                         let target_file = final_console_dir.join(format!("{}.zip", safe_title));
-                        if let Err(e) = std::fs::rename(&temp_file_path, &target_file) {
+                        if let Err(_e) = std::fs::rename(&temp_file_path, &target_file) {
                             let _ = std::fs::copy(&temp_file_path, &target_file);
                             let _ = std::fs::remove_file(&temp_file_path);
                         }
