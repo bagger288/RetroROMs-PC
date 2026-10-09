@@ -80,8 +80,16 @@ impl DownloadManager {
                 crate::scraper::get_game_subpath(&game.console_slug)
             );
 
+            let clean_direct_url = if direct_url.starts_with("//") {
+                format!("https:{}", direct_url)
+            } else if direct_url.starts_with('/') {
+                format!("https://www.emu-land.net{}", direct_url)
+            } else {
+                direct_url.clone()
+            }.replace(' ', "%20");
+
             let res = client
-                .get(&direct_url)
+                .get(&clean_direct_url)
                 .header("Referer", &referer)
                 .send()
                 .await;

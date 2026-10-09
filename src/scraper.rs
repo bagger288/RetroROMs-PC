@@ -381,20 +381,36 @@ impl EmuLandClient {
         getmfl_url: &str,
         referer: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let clean_url = getmfl_url.replace("&amp;", "&");
         let resp = self
             .no_redirect_client
-            .get(getmfl_url)
+            .get(&clean_url)
             .header("Referer", referer)
             .send()
             .await?;
 
         if let Some(loc) = resp.headers().get(reqwest::header::LOCATION) {
-            let location_str = loc.to_str()?;
-            return Ok(location_str.to_string());
+            let location_str = loc.to_str()?.trim();
+            let final_url = if location_str.starts_with("//") {
+                format!("https:{}", location_str)
+            } else if location_str.starts_with('/') {
+                format!("{}{}", BASE_URL, location_str)
+            } else {
+                location_str.to_string()
+            };
+            return Ok(final_url.replace(' ', "%20"));
         }
 
         // If no 302 Location header, check if final url changed
-        Ok(resp.url().to_string())
+        let resp_url = resp.url().to_string();
+        let final_url = if resp_url.starts_with("//") {
+            format!("https:{}", resp_url)
+        } else if resp_url.starts_with('/') {
+            format!("{}{}", BASE_URL, resp_url)
+        } else {
+            resp_url
+        };
+        Ok(final_url.replace(' ', "%20"))
     }
 
     pub async fn fetch_game_page_details(
