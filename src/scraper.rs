@@ -13,9 +13,25 @@ pub fn get_game_subpath(slug: &str) -> &'static str {
     }
 }
 
+pub fn is_valid_cover_image(url: &str) -> bool {
+    let lower = url.to_lowercase();
+    // Exclude country flags (jp.png, us.png, eu.png), transparent pixels, UI icons, and skin assets
+    if lower.contains("flag")
+        || lower.contains("pixel.gif")
+        || lower.contains("spacer")
+        || lower.contains("rating")
+        || lower.contains("star")
+        || lower.contains("/skin/")
+        || lower.contains("icon")
+    {
+        return false;
+    }
+    true
+}
+
 pub fn normalize_image_url(src: &str) -> Option<String> {
     let clean = src.trim();
-    if clean.is_empty() {
+    if clean.is_empty() || !is_valid_cover_image(clean) {
         return None;
     }
     if clean.starts_with("//") {
@@ -178,7 +194,7 @@ impl EmuLandClient {
         let mut games = Vec::new();
         let fcontainer_sel = Selector::parse(".fcontainer").unwrap();
         let rheader_a_sel = Selector::parse(".rheader a, h4 a, .title a").unwrap();
-        let img_sel = Selector::parse(".picture img, .ss-area img, img.game-screens, img").unwrap();
+        let img_sel = Selector::parse(".picture img, .ss-area img, img.game-screens, a.highslide img, .screen img, img[src*='ss.emu-land.net'], img[src*='_pict'], img").unwrap();
         let btn_sdl_sel = Selector::parse("[onclick*='getmfl'], .btn-sdl, a[href*='act=getmfl']").unwrap();
         let mfile_regex = Regex::new(r"id=([0-9]+)").unwrap();
         let finfo_sel = Selector::parse(".finfo li, .finfo").unwrap();
@@ -196,8 +212,8 @@ impl EmuLandClient {
 
             let cover_url = container
                 .select(&img_sel)
-                .find_map(|img| img.value().attr("src"))
-                .and_then(normalize_image_url);
+                .filter_map(|img| img.value().attr("src"))
+                .find_map(normalize_image_url);
 
             let mut mfile_id = None;
             if let Some(sdl) = container.select(&btn_sdl_sel).next() {

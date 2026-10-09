@@ -27,11 +27,17 @@ pub fn render_catalog_grid(
         .id_salt("catalog_grid_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let available_width = ui.available_width().max(300.0);
-            let card_width = 190.0;
-            let card_height = 280.0;
+            let available_width = ui.available_width().max(320.0);
+            let min_card_width = 190.0;
             let spacing = 12.0;
-            let cols = ((available_width + spacing) / (card_width + spacing)).floor().max(1.0) as usize;
+
+            // Compute columns based on min width, and stretch cards evenly to fill width
+            let cols = ((available_width + spacing) / (min_card_width + spacing))
+                .floor()
+                .max(1.0) as usize;
+            let card_width = ((available_width - (cols as f32 - 1.0) * spacing) / cols as f32)
+                .max(min_card_width);
+            let card_height = 290.0;
 
             let mut row_idx = 0;
             while row_idx < games.len() {
@@ -51,7 +57,9 @@ pub fn render_catalog_grid(
                                 on_favorite_toggled,
                                 on_play_clicked,
                             );
-                            ui.add_space(spacing);
+                            if col + 1 < cols {
+                                ui.add_space(spacing);
+                            }
                         }
                     }
                 });
@@ -59,33 +67,33 @@ pub fn render_catalog_grid(
                 row_idx += cols;
             }
 
-            // Pagination Controls
+            // Pagination Controls (always in view, never overflow right)
             ui.add_space(16.0);
             ui.separator();
             ui.add_space(8.0);
             ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                    ui.label(format!("Страница {} из {}", current_page, total_pages));
-                });
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let next_enabled = current_page < total_pages;
-                    if ui
-                        .add_enabled(next_enabled, egui::Button::new("Вперёд ▶"))
-                        .clicked()
-                    {
-                        *on_page_changed = Some(current_page + 1);
-                    }
-                    ui.add_space(8.0);
-                    let prev_enabled = current_page > 1;
-                    if ui
-                        .add_enabled(prev_enabled, egui::Button::new("◀ Назад"))
-                        .clicked()
-                    {
-                        *on_page_changed = Some(current_page - 1);
-                    }
-                });
+                ui.label(RichText::new(format!("Страница {} из {}", current_page, total_pages)).strong());
+                ui.add_space(20.0);
+
+                let prev_enabled = current_page > 1;
+                if ui
+                    .add_enabled(prev_enabled, egui::Button::new("◀ Назад"))
+                    .clicked()
+                {
+                    *on_page_changed = Some(current_page - 1);
+                }
+
+                ui.add_space(8.0);
+
+                let next_enabled = current_page < total_pages;
+                if ui
+                    .add_enabled(next_enabled, egui::Button::new("Вперёд ▶"))
+                    .clicked()
+                {
+                    *on_page_changed = Some(current_page + 1);
+                }
             });
-            ui.add_space(20.0);
+            ui.add_space(24.0);
         });
 }
 
@@ -111,40 +119,51 @@ fn render_game_card(
         ui.set_height(height);
 
         ui.vertical(|ui| {
-            // Cover Image Area with robust fallback
+            let inner_width = (width - 16.0).max(120.0);
             let img_height = 140.0;
-            let mut image_rendered = false;
+            let img_box_size = Vec2::new(inner_width, img_height);
 
-            if let Some(cover_url) = &game.cover_url {
-                if !cover_url.is_empty() {
-                    let resp = ui.add(
-                        egui::Image::new(cover_url)
-                            .fit_to_exact_size(Vec2::new(width, img_height))
-                            .rounding(Rounding::same(6.0)),
-                    );
-                    image_rendered = true;
-                    if resp.clicked() {
-                        *on_game_clicked = Some(game.clone());
+            // 1. Centered Image Container with guaranteed fixed height and centering
+            ui.allocate_ui_with_layout(
+                img_box_size,
+                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
+                |ui| {
+                    ui.set_min_size(img_box_size);
+                    ui.set_max_size(img_box_size);
+
+                    let mut image_rendered = false;
+                    if let Some(cover_url) = &game.cover_url {
+                        if !cover_url.is_empty() {
+                            let resp = ui.add(
+                                egui::Image::new(cover_url)
+                                    .max_size(img_box_size)
+                                    .rounding(Rounding::same(6.0)),
+                            );
+                            image_rendered = true;
+                            if resp.clicked() {
+                                *on_game_clicked = Some(game.clone());
+                            }
+                        }
                     }
-                }
-            }
 
-            if !image_rendered {
-                Frame::none()
-                    .fill(Color32::from_rgb(26, 32, 48))
-                    .rounding(Rounding::same(6.0))
-                    .show(ui, |ui| {
-                        ui.set_width(width);
-                        ui.set_height(img_height);
-                        ui.centered_and_justified(|ui| {
-                            ui.label(RichText::new("🎮").size(32.0));
-                        });
-                    });
-            }
+                    if !image_rendered {
+                        Frame::none()
+                            .fill(Color32::from_rgb(20, 24, 36))
+                            .rounding(Rounding::same(6.0))
+                            .show(ui, |ui| {
+                                ui.set_width(inner_width);
+                                ui.set_height(img_height);
+                                ui.centered_and_justified(|ui| {
+                                    ui.label(RichText::new("🎮").size(34.0));
+                                });
+                            });
+                    }
+                },
+            );
 
-            ui.add_space(6.0);
+            ui.add_space(8.0);
 
-            // Title
+            // 2. Title with truncate
             let title_text = RichText::new(&game.title)
                 .color(theme.text_color())
                 .strong()
@@ -153,7 +172,9 @@ fn render_game_card(
                 *on_game_clicked = Some(game.clone());
             }
 
-            // Info row: Console & Year
+            ui.add_space(4.0);
+
+            // 3. Info row: Console & Year
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(&game.console_name)
@@ -169,7 +190,9 @@ fn render_game_card(
                 });
             });
 
-            // Rating & File size row
+            ui.add_space(2.0);
+
+            // 4. Rating & File size row
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new(format!("★ {:.1}", game.rating))
@@ -185,9 +208,9 @@ fn render_game_card(
                 });
             });
 
-            ui.add_space(4.0);
+            ui.add_space(6.0);
 
-            // Action Buttons
+            // 5. Action Buttons pinned at bottom
             ui.horizontal(|ui| {
                 // Favorite Star
                 let fav_text = if game.is_favorite { "★" } else { "☆" };
