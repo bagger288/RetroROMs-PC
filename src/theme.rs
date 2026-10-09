@@ -118,4 +118,8 @@ impl ThemePreset {
         style.spacing.button_padding = egui::vec2(10.0, 6.0);
         ctx.set_style(style);
     }
+
+    pub fn apply_to_context(&self, ctx: &egui::Context) {
+        self.apply_to_ctx(ctx);
+    }
 }

@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{CentralPanel, Color32, RichText, SidePanel, TopBottomPanel};
+use egui::{CentralPanel, RichText, SidePanel, TopBottomPanel};
 use retroms_desktop::config::AppSettings;
 use retroms_desktop::db::Database;
 use retroms_desktop::downloader::{DownloadEvent, DownloadManager};
@@ -167,36 +167,7 @@ impl RetroRomsApp {
     }
 
     pub fn trigger_load_games(&mut self) {
-        let console = match self.current_console() {
-            Some(c) => c.clone(),
-            None => return,
-        };
-
-        self.is_loading_games = true;
-        self.catalog_games.clear();
-        self.set_status(format!("Загрузка игр для {}...", console.short_name));
-
-        let slug = console.slug.clone();
-        let name = console.name.clone();
-        let section = console.section.clone();
-        let category = self.selected_category.clone();
-        let page = self.current_page;
-        let scraper = self.scraper.clone();
-
-        // Initial placeholder categories to avoid blank category row
-        if self.categories.is_empty() {
-            self.categories = EmuLandClient::get_initial_categories(&slug);
-        }
-
-        // Spawn async task
-        tokio::spawn(async move {
-            let res = scraper.fetch_games_page(&slug, &name, &section, &category, page).await;
-            // The result will be processed via egui Context repaint or shared channel if needed
-            // For now, let's keep direct background state sync or channels
-        });
-
-        // Synchronous immediate load via scraper in tokio blocking if needed, or channel
-        // Let's spawn with local channel to avoid hanging UI
+        self.trigger_load_games_sync();
     }
 
     pub fn trigger_load_rom_versions(&mut self, game: &GameCard) {
@@ -334,7 +305,7 @@ impl RetroRomsApp {
             token.store(true, Ordering::Relaxed);
         }
         self.active_downloads.remove(&record_id);
-        let _ = self.db.update_download_status(record_id, DownloadStatus::Cancelled, None);
+        let _ = self.db.update_download_status(record_id, DownloadStatus::Cancelled, None, None);
         self.reload_downloads_history();
         self.set_status("Загрузка отменена");
     }
@@ -378,7 +349,7 @@ impl eframe::App for RetroRomsApp {
         while let Ok(event) = self.download_rx.try_recv() {
             match event {
                 DownloadEvent::Started { record_id, game_id: _ } => {
-                    let _ = self.db.update_download_status(record_id, DownloadStatus::Downloading, None);
+                    let _ = self.db.update_download_status(record_id, DownloadStatus::Downloading, None, None);
                 }
                 DownloadEvent::Progress {
                     record_id,
@@ -397,7 +368,7 @@ impl eframe::App for RetroRomsApp {
                 DownloadEvent::Completed { record_id, local_path, message } => {
                     self.active_downloads.remove(&record_id);
                     self.download_tokens.remove(&record_id);
-                    let _ = self.db.update_download_status(record_id, DownloadStatus::Completed, Some(&local_path));
+                    let _ = self.db.update_download_status(record_id, DownloadStatus::Completed, Some(&local_path), None);
                     self.reload_downloads_history();
                     self.set_status(message);
                 }
@@ -409,7 +380,7 @@ impl eframe::App for RetroRomsApp {
                 DownloadEvent::Failed { record_id, game_id: _, error } => {
                     self.active_downloads.remove(&record_id);
                     self.download_tokens.remove(&record_id);
-                    let _ = self.db.update_download_status(record_id, DownloadStatus::Failed, None);
+                    let _ = self.db.update_download_status(record_id, DownloadStatus::Failed, None, Some(&error));
                     self.reload_downloads_history();
                     self.set_status(format!("Ошибка загрузки: {}", error));
                 }
@@ -417,7 +388,7 @@ impl eframe::App for RetroRomsApp {
         }
 
         // Apply visual theme
-        self.theme.apply_to_context(ctx);
+        self.theme.apply_to_ctx(ctx);
 
         // Handle modals
         let mut download_version_to_start = None;
