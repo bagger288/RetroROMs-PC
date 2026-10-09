@@ -128,14 +128,25 @@ pub fn render_game_detail_window(
                     }
 
                     // Description
+                    ui.label(RichText::new("📖 Описание игры").strong().size(13.0));
+                    ui.add_space(4.0);
                     if !g.description.is_empty() {
-                        ui.label(RichText::new("Описание игры").strong());
-                        ui.add_space(4.0);
-                        ui.label(&g.description);
-                        ui.add_space(12.0);
-                        ui.separator();
-                        ui.add_space(8.0);
+                        ui.label(RichText::new(&g.description).size(12.0));
+                    } else if is_loading_versions {
+                        ui.horizontal(|ui| {
+                            ui.spinner();
+                            ui.label(RichText::new("Загрузка описания игры с Emu-Land.net...").weak());
+                        });
+                    } else {
+                        ui.label(
+                            RichText::new("Описание игры подгружается с Emu-Land.net или отсутствует. Вы можете выбрать нужную версию ROM ниже для скачивания.")
+                                .weak()
+                                .italics(),
+                        );
                     }
+                    ui.add_space(12.0);
+                    ui.separator();
+                    ui.add_space(8.0);
 
                     // Available ROM Versions Table
                     ui.label(RichText::new("Доступные версии ROM / Архивы").strong().size(14.0));

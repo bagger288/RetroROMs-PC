@@ -402,22 +402,43 @@ impl EmuLandClient {
         game: &mut GameCard,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let slug = match &game.game_page_slug {
-            Some(s) => s.as_str(),
-            None => return Ok(()),
+            Some(s) if !s.is_empty() => s.as_str(),
+            _ => return Ok(()),
         };
         let subpath = get_game_subpath(&game.console_slug);
-        let url = format!("{}/{}/{}/{}/{}", BASE_URL, game.section, game.console_slug, subpath, slug);
+        let url = if slug.starts_with("http") {
+            slug.to_string()
+        } else if slug.starts_with('/') {
+            format!("{}{}", BASE_URL, slug)
+        } else {
+            format!("{}/{}/{}/{}/{}", BASE_URL, game.section, game.console_slug, subpath, slug)
+        };
 
         let resp = self.client.get(&url).send().await?;
         let html = resp.text().await?;
         let doc = Html::parse_document(&html);
 
-        let desc_sel = Selector::parse(".ftext, .description, #content p").unwrap();
-        if let Some(p) = doc.select(&desc_sel).next() {
-            game.description = p.text().collect::<Vec<_>>().join(" ").trim().to_string();
+        // Parse full description from .ftext or .description
+        let desc_sel = Selector::parse(".ftext p, .ftext, .description p, .description, #description").unwrap();
+        let mut desc_parts = Vec::new();
+        for el in doc.select(&desc_sel) {
+            let t = el.text().collect::<Vec<_>>().join(" ").trim().to_string();
+            if !t.is_empty()
+                && !t.contains("Kaillera server")
+                && !t.contains("Mednafen server")
+                && !t.contains("Подробнее...")
+                && !t.contains("Случайный скриншот")
+                && !desc_parts.contains(&t)
+            {
+                desc_parts.push(t);
+            }
+        }
+        if !desc_parts.is_empty() {
+            game.description = desc_parts.join("\n\n");
         }
 
-        let img_sel = Selector::parse(".picture img, .game-screens, img").unwrap();
+        // Parse game screenshots
+        let img_sel = Selector::parse(".picture img, .ss-area img, img.game-screens, .screen img, a.highslide img, img[src*='ss.emu-land.net'], img[src*='_pict'], img[src*='screens']").unwrap();
         let mut screens = Vec::new();
         for img in doc.select(&img_sel) {
             if let Some(src) = img.value().attr("src") {

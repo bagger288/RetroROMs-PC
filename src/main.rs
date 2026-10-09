@@ -170,28 +170,56 @@ impl RetroRomsApp {
         self.trigger_load_games_sync();
     }
 
-    pub fn trigger_load_rom_versions(&mut self, game: &GameCard) {
-        let mfile_id = match &game.mfile_id {
-            Some(id) => id.clone(),
-            None => return,
-        };
-
+    pub fn open_game_detail(&mut self, game: &GameCard) {
+        let mut full_game = game.clone();
         self.is_loading_versions = true;
         self.rom_versions.clear();
-        let slug = game.console_slug.clone();
-        let section = game.section.clone();
-        let scraper = self.scraper.clone();
+        self.selected_game_for_detail = Some(full_game.clone());
 
-        let versions_res = tokio::task::block_in_place(|| {
+        let scraper = self.scraper.clone();
+        let section = full_game.section.clone();
+        let slug = full_game.console_slug.clone();
+        let mfile_id_opt = full_game.mfile_id.clone();
+        let game_for_details = full_game.clone();
+
+        let (versions_res, details_res) = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                scraper.fetch_rom_versions(&section, &slug, &mfile_id).await
+                let v_fut = async {
+                    if let Some(mid) = &mfile_id_opt {
+                        scraper.fetch_rom_versions(&section, &slug, mid).await
+                    } else {
+                        Ok(Vec::new())
+                    }
+                };
+                let d_fut = async {
+                    let mut gm = game_for_details;
+                    let res = scraper.fetch_game_page_details(&mut gm).await;
+                    (res, gm)
+                };
+                tokio::join!(v_fut, d_fut)
             })
         });
 
         self.is_loading_versions = false;
+        if let (Ok(_), updated_game) = details_res {
+            full_game = updated_game;
+            // Also keep description & cover cached in catalog games list
+            if let Some(cg) = self.catalog_games.iter_mut().find(|cg| cg.id == full_game.id) {
+                cg.description = full_game.description.clone();
+                if cg.cover_url.is_none() && full_game.cover_url.is_some() {
+                    cg.cover_url = full_game.cover_url.clone();
+                }
+            }
+        }
         if let Ok(versions) = versions_res {
             self.rom_versions = versions;
         }
+
+        self.selected_game_for_detail = Some(full_game);
+    }
+
+    pub fn trigger_load_rom_versions(&mut self, game: &GameCard) {
+        self.open_game_detail(game);
     }
 
     pub fn start_game_download(&mut self, game: GameCard, version: Option<RomFileVersion>) {
@@ -406,7 +434,10 @@ impl eframe::App for RetroRomsApp {
         );
 
         if let Some((game, ver)) = download_version_to_start {
+            let ver_name = ver.name.clone();
             self.start_game_download(game, Some(ver));
+            self.selected_game_for_detail = None;
+            self.set_status(format!("Начата загрузка версии: {}", ver_name));
         }
         if let Some(game) = play_from_detail {
             self.play_game(&game);
@@ -580,11 +611,10 @@ impl eframe::App for RetroRomsApp {
                             self.trigger_load_games_sync();
                         }
                         if let Some(game) = game_to_open {
-                            self.trigger_load_rom_versions(&game);
-                            self.selected_game_for_detail = Some(game);
+                            self.open_game_detail(&game);
                         }
                         if let Some(game) = game_to_download {
-                            self.start_game_download(game, None);
+                            self.open_game_detail(&game);
                         }
                         if let Some((game, new_fav)) = favorite_toggle {
                             let _ = self.db.set_game_favorite(&game, new_fav);
@@ -651,11 +681,10 @@ impl eframe::App for RetroRomsApp {
                         );
 
                         if let Some(game) = game_to_open {
-                            self.trigger_load_rom_versions(&game);
-                            self.selected_game_for_detail = Some(game);
+                            self.open_game_detail(&game);
                         }
                         if let Some(game) = game_to_download {
-                            self.start_game_download(game, None);
+                            self.open_game_detail(&game);
                         }
                         if let Some((game, new_fav)) = favorite_toggle {
                             let _ = self.db.set_game_favorite(&game, new_fav);
