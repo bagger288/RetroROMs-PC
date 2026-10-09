@@ -1,0 +1,25 @@
+# Rust & Cargo
+target/
+**/*.rs.bk
+Cargo.lock.dist
+retroms.db
+retroms.db-journal
+retroms_config.json
+*.tmp
+
+# Android & Gradle (inside android/)
+*.iml
+.gradle
+.kotlin
+local.properties
+/build
+/captures
+.externalNativeBuild
+.cxx
+.env
+debug.keystore
+
+# IDE & OS
+.idea/
+.DS_Store
+Thumbs.db

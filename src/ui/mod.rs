@@ -1,0 +1,42 @@
+pub mod catalog_grid;
+pub mod catalog_table;
+pub mod downloads_view;
+pub mod favorites_view;
+pub mod game_detail;
+pub mod settings_view;
+pub mod sidebar;
+pub mod topbar;
+pub mod zip_modal;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NavTab {
+    Catalog,
+    Downloads,
+    Favorites,
+    Settings,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    Grid,
+    Table,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortOption {
+    Default,
+    RatingDesc,
+    TitleAsc,
+    TitleDesc,
+}
+
+impl SortOption {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SortOption::Default => "По умолчанию",
+            SortOption::RatingDesc => "Рейтинг ★",
+            SortOption::TitleAsc => "Имя (А-Я)",
+            SortOption::TitleDesc => "Имя (Я-А)",
+        }
+    }
+}

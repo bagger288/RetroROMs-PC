@@ -1,0 +1,58 @@
+name: Build Windows PC Port (Rust)
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'android/**'
+      - '**.md'
+  pull_request:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'android/**'
+      - '**.md'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    name: Build Windows x64 Binary
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Setup Rust Dependency Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          cache-all-crates: "true"
+
+      - name: Build Release Binary
+        run: cargo build --release
+
+      - name: Prepare Distribution Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target/release/retroms-desktop.exe dist/RetroROMs-PC.exe
+          if (Test-Path README.md) {
+            Copy-Item README.md dist/
+          }
+          if (Test-Path art/icon.png) {
+            Copy-Item art/icon.png dist/icon.png
+          }
+          # Generate SHA256 checksum
+          Get-FileHash dist/RetroROMs-PC.exe -Algorithm SHA256 | Out-File dist/checksum-sha256.txt
+          Get-ChildItem -Path dist
+
+      - name: Upload Windows Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroROMs-PC-Windows-x64
+          path: dist/
+          retention-days: 30

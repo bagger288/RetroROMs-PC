@@ -1,0 +1,8 @@
+{
+  "name": "RetroROMs PC",
+  "description": "Browse, search and download retro console ROMs from Emu-Land with automatic folder sorting",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

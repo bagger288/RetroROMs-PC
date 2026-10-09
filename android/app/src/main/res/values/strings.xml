@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">RetroROMs</string>
+    <string name="nav_consoles">Consoles</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="nav_favorites">Favorites</string>
+    <string name="search_placeholder">Search games, genres…</string>
+    <string name="manage_consoles">Manage Platforms</string>
+    <string name="download_to_folder">Save to Downloads/RetroROMs/</string>
+</resources>
