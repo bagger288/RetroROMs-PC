@@ -135,23 +135,48 @@ pub fn render_settings_view(
                 );
 
                 ui.add_space(6.0);
-                ui.collapsing("⚙ Настройка ядер libretro для консолей (Cores)", |ui| {
-                    ui.label(
-                        RichText::new("По умолчанию заданы стабильные ядра. RetroArch ищет ядра в подкаталоге cores:")
-                            .weak()
-                            .size(11.0),
-                    );
-                    ui.add_space(4.0);
+                ui.collapsing("⚙ Настройка ядер libretro для всех систем (Cores)", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new("По умолчанию заданы стабильные ядра. RetroArch ищет ядра в подкаталоге cores:")
+                                .weak()
+                                .size(11.0),
+                        );
+                        if ui.button("↺ Сбросить все ядра на стандартные").clicked() {
+                            settings.retroarch_cores = crate::config::get_default_retroarch_cores();
+                            let _ = settings.save();
+                        }
+                    });
+                    ui.add_space(6.0);
 
-                    let mut core_keys: Vec<String> = settings.retroarch_cores.keys().cloned().collect();
-                    core_keys.sort();
+                    if settings.retroarch_cores.is_empty() {
+                        settings.retroarch_cores = crate::config::get_default_retroarch_cores();
+                    }
 
-                    for slug in core_keys {
-                        let core_entry = settings.retroarch_cores.entry(slug.clone()).or_default();
+                    for console in consoles.iter() {
+                        let slug = &console.slug;
+                        let default_core = crate::config::get_default_retroarch_cores()
+                            .get(slug)
+                            .cloned()
+                            .unwrap_or_else(|| "core_libretro.dll".to_string());
+
+                        let core_entry = settings
+                            .retroarch_cores
+                            .entry(slug.clone())
+                            .or_insert_with(|| default_core.clone());
+
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(slug.to_uppercase()).strong().size(11.0));
-                            ui.add(egui::TextEdit::singleline(core_entry).desired_width(280.0));
+                            ui.label(RichText::new(format!("{} {}", console.icon_key, console.name)).strong().size(12.0));
+                            ui.add(egui::TextEdit::singleline(core_entry).desired_width(260.0));
+                            if ui.button("Обзор .dll...").clicked() {
+                                if let Some(dll_file) = pick_executable_file(&format!("Выберите ядро RetroArch для {}", console.name)) {
+                                    let filename = dll_file.file_name().unwrap_or_default().to_string_lossy().to_string();
+                                    *core_entry = filename;
+                                    let _ = settings.save();
+                                }
+                            }
                         });
+                        ui.add_space(2.0);
                     }
                 });
             });

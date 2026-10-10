@@ -47,15 +47,42 @@ pub fn reveal_in_file_explorer(path: &Path) -> std::io::Result<()> {
 }
 
 pub fn launch_emulator(emulator_exe: &str, rom_path: &Path, args: &str) -> std::io::Result<()> {
-    let mut cmd = Command::new(emulator_exe);
+    let clean_exe = emulator_exe.trim().trim_matches('"').trim_matches('\'');
+    println!("[EMULATOR] Запуск эмулятора: {:?}", clean_exe);
+    println!("[EMULATOR] ROM файл: {:?}", rom_path);
+
+    let exe_path = PathBuf::from(clean_exe);
+    if !exe_path.exists() {
+        let err_msg = format!("Исполняемый файл эмулятора не найден: {}", clean_exe);
+        println!("[EMULATOR ОШИБКА] {}", err_msg);
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, err_msg));
+    }
+
+    let mut cmd = Command::new(&exe_path);
+    if let Some(exe_dir) = exe_path.parent() {
+        if exe_dir.exists() {
+            cmd.current_dir(exe_dir);
+        }
+    }
+
     if !args.trim().is_empty() {
         for arg in args.split_whitespace() {
             cmd.arg(arg);
         }
     }
     cmd.arg(rom_path);
-    cmd.spawn()?;
-    Ok(())
+
+    println!("[EMULATOR] Выполняемая команда: {:?}", cmd);
+    match cmd.spawn() {
+        Ok(child) => {
+            println!("[EMULATOR] Успешно запущен! Процесс PID: {}", child.id());
+            Ok(())
+        }
+        Err(e) => {
+            println!("[EMULATOR ОШИБКА] Не удалось выполнить spawn(): {}", e);
+            Err(e)
+        }
+    }
 }
 
 pub fn launch_retroarch(
@@ -64,32 +91,72 @@ pub fn launch_retroarch(
     core_name_or_path: Option<&str>,
     extra_args: &str,
 ) -> std::io::Result<()> {
-    let mut cmd = Command::new(retroarch_exe);
+    let clean_exe = retroarch_exe.trim().trim_matches('"').trim_matches('\'');
+    println!("--------------------------------------------------");
+    println!("[RETROARCH] Запуск RetroArch: {:?}", clean_exe);
+    println!("[RETROARCH] ROM файл: {:?}", rom_path);
+
+    let exe_path = PathBuf::from(clean_exe);
+    if !exe_path.exists() {
+        let err_msg = format!("Файл RetroArch не существует по пути: {}", clean_exe);
+        println!("[RETROARCH ОШИБКА] {}", err_msg);
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, err_msg));
+    }
+
+    let mut cmd = Command::new(&exe_path);
+
+    // CRITICAL: Set working directory to RetroArch directory so it finds retroarch.cfg and cores/
+    if let Some(exe_dir) = exe_path.parent() {
+        if exe_dir.exists() {
+            println!("[RETROARCH] Рабочая директория установлена в: {:?}", exe_dir);
+            cmd.current_dir(exe_dir);
+        }
+    }
+
+    let mut core_applied = false;
 
     if let Some(core) = core_name_or_path {
-        let trimmed_core = core.trim();
+        let trimmed_core = core.trim().trim_matches('"').trim_matches('\'');
         if !trimmed_core.is_empty() {
-            cmd.arg("-L");
             let core_path = PathBuf::from(trimmed_core);
             if core_path.exists() {
+                println!("[RETROARCH] Используется указанный путь к ядру: {:?}", core_path);
+                cmd.arg("-L");
                 cmd.arg(core_path);
+                core_applied = true;
             } else {
-                let exe_dir = Path::new(retroarch_exe).parent().unwrap_or_else(|| Path::new(""));
+                let exe_dir = exe_path.parent().unwrap_or_else(|| Path::new(""));
                 let candidate1 = exe_dir.join("cores").join(trimmed_core);
                 let candidate2 = exe_dir.join("cores").join(format!("{}.dll", trimmed_core));
                 let candidate3 = exe_dir.join("cores").join(format!("{}_libretro.dll", trimmed_core));
 
                 if candidate1.exists() {
+                    println!("[RETROARCH] Найдено ядро в cores/: {:?}", candidate1);
+                    cmd.arg("-L");
                     cmd.arg(candidate1);
+                    core_applied = true;
                 } else if candidate2.exists() {
+                    println!("[RETROARCH] Найдено ядро в cores/: {:?}", candidate2);
+                    cmd.arg("-L");
                     cmd.arg(candidate2);
+                    core_applied = true;
                 } else if candidate3.exists() {
+                    println!("[RETROARCH] Найдено ядро в cores/: {:?}", candidate3);
+                    cmd.arg("-L");
                     cmd.arg(candidate3);
+                    core_applied = true;
                 } else {
+                    println!("[RETROARCH] Ядро не найдено локально в cores/, передаём имя: {}", trimmed_core);
+                    cmd.arg("-L");
                     cmd.arg(trimmed_core);
+                    core_applied = true;
                 }
             }
         }
+    }
+
+    if !core_applied {
+        println!("[RETROARCH] Ядро не указано, RetroArch попытается сопоставить его автоматически.");
     }
 
     if !extra_args.trim().is_empty() {
@@ -99,6 +166,18 @@ pub fn launch_retroarch(
     }
 
     cmd.arg(rom_path);
-    cmd.spawn()?;
-    Ok(())
+
+    println!("[RETROARCH] Команда для выполнения: {:?}", cmd);
+    match cmd.spawn() {
+        Ok(child) => {
+            println!("[RETROARCH] Процесс успешно создан! PID: {}", child.id());
+            println!("--------------------------------------------------");
+            Ok(())
+        }
+        Err(e) => {
+            println!("[RETROARCH ОШИБКА] Ошибка при spawn(): {}", e);
+            println!("--------------------------------------------------");
+            Err(e)
+        }
+    }
 }

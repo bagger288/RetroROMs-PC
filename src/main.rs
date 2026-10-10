@@ -1,5 +1,3 @@
-#![windows_subsystem = "windows"]
-
 use eframe::egui;
 use egui::{CentralPanel, RichText, SidePanel, TopBottomPanel};
 use retroms_desktop::config::AppSettings;
@@ -29,6 +27,11 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
 
 #[tokio::main]
 async fn main() -> Result<(), eframe::Error> {
+    println!("============================================================");
+    println!("  RetroROMs Desktop v1.0.0 (Emu-Land Catalog & ROM Manager)");
+    println!("============================================================");
+    println!("[LOG] Консоль запущена. Все логи приложения выводятся сюда.");
+
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 780.0])
@@ -420,16 +423,31 @@ impl RetroRomsApp {
             }
         };
 
+        println!("[PLAY] Запуск игры: '{}' (платформа: {})", game.title, game.console_slug);
+        println!("[PLAY] Файл: {}", local_path.display());
+        println!("[PLAY] Режим RetroArch: {}, путь: '{}'", self.settings.use_retroarch, self.settings.retroarch_path);
+
         if !local_path.exists() {
-            self.set_status(format!("Файл игры не найден по пути: {}", local_path.display()));
+            let msg = format!("Файл игры не найден по пути: {}", local_path.display());
+            println!("[PLAY ОШИБКА] {}", msg);
+            self.set_status(msg);
             return;
         }
 
         let emulator = self.settings.emulator_paths.get(&game.console_slug).cloned().unwrap_or_default();
         let args = self.settings.emulator_args.get(&game.console_slug).cloned().unwrap_or_default();
 
-        if self.settings.use_retroarch && !self.settings.retroarch_path.trim().is_empty() {
+        if self.settings.use_retroarch {
+            if self.settings.retroarch_path.trim().is_empty() {
+                let msg = "ОШИБКА: В настройках включён RetroArch, но путь к retroarch.exe не указан! Укажите его в Настройках.";
+                println!("[PLAY ОШИБКА] {}", msg);
+                self.set_status(msg);
+                return;
+            }
+
             let core = self.settings.get_retroarch_core_for_console(&game.console_slug);
+            println!("[PLAY] Выбранное ядро RetroArch для {}: {:?}", game.console_slug, core);
+
             match launch_retroarch(
                 &self.settings.retroarch_path,
                 &local_path,
@@ -438,18 +456,32 @@ impl RetroRomsApp {
             ) {
                 Ok(_) => {
                     let core_display = core.unwrap_or("авто");
-                    self.set_status(format!("Запущен RetroArch [{}] для {}", core_display, game.title));
+                    let msg = format!("Запущен RetroArch [{}] для {}", core_display, game.title);
+                    println!("[PLAY УСПЕХ] {}", msg);
+                    self.set_status(msg);
                 }
                 Err(e) => {
-                    self.set_status(format!("Не удалось запустить RetroArch: {}", e));
+                    let msg = format!("Не удалось запустить RetroArch: {}", e);
+                    println!("[PLAY ОШИБКА] {}", msg);
+                    self.set_status(msg);
                 }
             }
         } else if !emulator.is_empty() {
+            println!("[PLAY] Запуск через отдельный эмулятор: {} {:?}", emulator, args);
             match launch_emulator(&emulator, &local_path, &args) {
-                Ok(_) => self.set_status(format!("Запущен эмулятор: {}", emulator)),
-                Err(e) => self.set_status(format!("Не удалось запустить эмулятор: {}", e)),
+                Ok(_) => {
+                    let msg = format!("Запущен эмулятор: {}", emulator);
+                    println!("[PLAY УСПЕХ] {}", msg);
+                    self.set_status(msg);
+                }
+                Err(e) => {
+                    let msg = format!("Не удалось запустить эмулятор: {}", e);
+                    println!("[PLAY ОШИБКА] {}", msg);
+                    self.set_status(msg);
+                }
             }
         } else {
+            println!("[PLAY] Эмулятор не настроен. Открытие через системную ассоциацию: {}", local_path.display());
             let _ = open::that(&local_path);
             self.set_status(format!("Открыт файл: {}", local_path.display()));
         }

@@ -109,15 +109,38 @@ impl AppSettings {
 
     pub fn load() -> Self {
         let path = Self::config_path();
-        if path.exists() {
+        let mut settings = if path.exists() {
             if let Ok(content) = fs::read_to_string(&path) {
-                if let Ok(settings) = serde_json::from_str::<AppSettings>(&content) {
-                    return settings;
+                if let Ok(s) = serde_json::from_str::<AppSettings>(&content) {
+                    s
+                } else {
+                    Self::default()
+                }
+            } else {
+                Self::default()
+            }
+        } else {
+            Self::default()
+        };
+
+        // Guarantee default cores are populated even if older config file was loaded
+        if settings.retroarch_cores.is_empty() {
+            settings.retroarch_cores = get_default_retroarch_cores();
+            let _ = settings.save();
+        } else {
+            let defaults = get_default_retroarch_cores();
+            let mut changed = false;
+            for (k, v) in defaults {
+                if !settings.retroarch_cores.contains_key(&k) {
+                    settings.retroarch_cores.insert(k, v);
+                    changed = true;
                 }
             }
+            if changed {
+                let _ = settings.save();
+            }
         }
-        let settings = Self::default();
-        let _ = settings.save();
+
         settings
     }
 
