@@ -114,6 +114,7 @@ pub fn launch_retroarch(
     }
 
     let mut core_applied = false;
+    let mut chosen_core_display = String::new();
 
     if let Some(core) = core_name_or_path {
         let trimmed_core = core.trim().trim_matches('"').trim_matches('\'');
@@ -123,6 +124,7 @@ pub fn launch_retroarch(
                 println!("[RETROARCH] Путь к ядру: {}", core_path.display());
                 cmd.arg("-L");
                 cmd.arg(&core_path);
+                chosen_core_display = core_path.display().to_string();
                 core_applied = true;
             } else {
                 let exe_dir = exe_path.parent().unwrap_or_else(|| Path::new(""));
@@ -134,21 +136,25 @@ pub fn launch_retroarch(
                     println!("[RETROARCH] Найдено ядро в cores/: {}", candidate1.display());
                     cmd.arg("-L");
                     cmd.arg(&candidate1);
+                    chosen_core_display = candidate1.display().to_string();
                     core_applied = true;
                 } else if candidate2.exists() {
                     println!("[RETROARCH] Найдено ядро в cores/: {}", candidate2.display());
                     cmd.arg("-L");
                     cmd.arg(&candidate2);
+                    chosen_core_display = candidate2.display().to_string();
                     core_applied = true;
                 } else if candidate3.exists() {
                     println!("[RETROARCH] Найдено ядро в cores/: {}", candidate3.display());
                     cmd.arg("-L");
                     cmd.arg(&candidate3);
+                    chosen_core_display = candidate3.display().to_string();
                     core_applied = true;
                 } else {
                     println!("[RETROARCH] Имя ядра для RetroArch: {}", trimmed_core);
                     cmd.arg("-L");
                     cmd.arg(trimmed_core);
+                    chosen_core_display = trimmed_core.to_string();
                     core_applied = true;
                 }
             }
@@ -167,7 +173,11 @@ pub fn launch_retroarch(
 
     cmd.arg(rom_path);
 
-    println!("[RETROARCH] Команда запуска: \"{}\" -L \"{:?}\" \"{}\"", clean_exe, core_name_or_path.unwrap_or(""), rom_path.display());
+    if core_applied {
+        println!("[RETROARCH] Команда запуска: \"{}\" -L \"{}\" \"{}\"", clean_exe, chosen_core_display, rom_path.display());
+    } else {
+        println!("[RETROARCH] Команда запуска: \"{}\" \"{}\"", clean_exe, rom_path.display());
+    }
     match cmd.spawn() {
         Ok(child) => {
             println!("[RETROARCH] Процесс успешно создан! PID: {}", child.id());

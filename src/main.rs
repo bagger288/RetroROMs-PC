@@ -185,41 +185,68 @@ impl RetroRomsApp {
         }
 
         // 1. Map of game_id and lowercase title to local_file_path from completed downloads in DB
+        // self.download_history is sorted by timestamp DESC (newest first).
+        // Using .entry().or_insert() ensures the newest download is preserved!
         let mut completed_files: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         for r in &self.download_history {
             if r.status == DownloadStatus::Completed {
                 if let Some(path) = &r.local_path {
                     if !path.is_empty() && std::path::Path::new(path).exists() {
-                        completed_files.insert(r.game_id.clone(), path.clone());
-                        completed_files.insert(r.game_title.to_lowercase(), path.clone());
+                        completed_files.entry(r.game_id.clone()).or_insert_with(|| path.clone());
+                        completed_files.entry(r.game_title.to_lowercase()).or_insert_with(|| path.clone());
                     }
                 }
             }
         }
 
-        // 2. Also check if the ROM file exists in the console folder on disk
+        // 2. Prioritize checking the user's CURRENT configured download directory
         let download_dir = std::path::PathBuf::from(&self.settings.download_directory);
 
         let update_card = |g: &mut GameCard| {
+            // First: Search directly in the current configured download directory
+            let console_folder = g.console_name.replace(['/', '\\'], "_");
+            let target_subfolders = [
+                download_dir.join(&console_folder),
+                download_dir.join(&g.console_slug),
+                download_dir.clone(),
+            ];
+            let raw_title = g.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            let safe_title = raw_title.trim_end_matches('.').trim().to_string();
+            let safe_title_lower = safe_title.to_lowercase();
+
+            for target_subfolder in &target_subfolders {
+                if target_subfolder.exists() {
+                    for ext in &["nes", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc", "n64", "z64", "iso", "zip", "7z"] {
+                        let candidate1 = target_subfolder.join(format!("{}.{}", safe_title, ext));
+                        if candidate1.exists() {
+                            g.is_downloaded = true;
+                            g.local_file_path = Some(candidate1.to_string_lossy().to_string());
+                            return;
+                        }
+                    }
+                    if let Ok(entries) = std::fs::read_dir(target_subfolder) {
+                        for entry in entries.flatten() {
+                            let entry_path = entry.path();
+                            if entry_path.is_file() {
+                                if let Some(file_name) = entry_path.file_name().and_then(|n| n.to_str()) {
+                                    let file_lower = file_name.to_lowercase();
+                                    if file_lower.starts_with(&safe_title_lower) {
+                                        g.is_downloaded = true;
+                                        g.local_file_path = Some(entry_path.to_string_lossy().to_string());
+                                        return;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fallback: Check completed downloads from DB
             if let Some(path) = completed_files.get(&g.id).or_else(|| completed_files.get(&g.title.to_lowercase())) {
                 g.is_downloaded = true;
                 g.local_file_path = Some(path.clone());
                 return;
-            }
-
-            // Check files in the console download directory
-            let console_folder = g.console_name.replace(['/', '\\'], "_");
-            let target_subfolder = download_dir.join(&console_folder);
-            if target_subfolder.exists() {
-                let safe_title = g.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-                for ext in &["zip", "7z", "nes", "sfc", "smc", "bin", "gen", "md", "gba", "gb", "iso"] {
-                    let candidate = target_subfolder.join(format!("{}.{}", safe_title, ext));
-                    if candidate.exists() {
-                        g.is_downloaded = true;
-                        g.local_file_path = Some(candidate.to_string_lossy().to_string());
-                        return;
-                    }
-                }
             }
         };
 
@@ -347,7 +374,14 @@ impl RetroRomsApp {
         }).unwrap_or(download_url);
 
         // 3. Insert record in SQLite
-        let file_name = format!("{}.zip", game.title);
+        let raw_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+        let safe_title = raw_title.trim_end_matches('.').trim().to_string();
+        let version_name = version.as_ref().map(|v| v.name.clone());
+        let file_name = if let Some(v_name) = &version_name {
+            v_name.clone()
+        } else {
+            format!("{}.zip", safe_title)
+        };
         let record_id = match self.db.add_download_record(
             &game.id,
             &game.title,
@@ -389,6 +423,7 @@ impl RetroRomsApp {
         self.download_manager.download_game(
             record_id,
             game_clone,
+            version_name,
             direct_url,
             target_dir,
             console_folder,
@@ -411,29 +446,6 @@ impl RetroRomsApp {
     }
 
     pub fn locate_rom_file(&self, game: &GameCard) -> Option<PathBuf> {
-        // 1. Check if game already has local_file_path and it actually exists on disk
-        if let Some(p) = &game.local_file_path {
-            let path = PathBuf::from(p);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
-        // 2. Check download history in SQLite for this game
-        for r in &self.download_history {
-            if r.status == DownloadStatus::Completed
-                && (r.game_id == game.id || r.game_title.eq_ignore_ascii_case(&game.title))
-            {
-                if let Some(p) = &r.local_path {
-                    let path = PathBuf::from(p);
-                    if path.exists() {
-                        return Some(path);
-                    }
-                }
-            }
-        }
-
-        // 3. Search in the user's CURRENT configured download directory
         let download_dir = PathBuf::from(&self.settings.download_directory);
         let console_folder = self
             .consoles
@@ -445,31 +457,46 @@ impl RetroRomsApp {
         let candidate_dirs = [
             download_dir.join(&console_folder),
             download_dir.join(&game.console_name),
+            download_dir.join(&game.console_slug),
             download_dir.clone(),
         ];
 
-        let safe_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
-        let safe_title_trimmed = safe_title.trim_end_matches('.').to_string();
+        let raw_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+        let safe_title_trimmed = raw_title.trim_end_matches('.').trim().to_string();
+        let safe_title = raw_title.clone();
         let safe_title_lower = safe_title_trimmed.to_lowercase();
 
-        let extensions = [
-            "nes", "zip", "7z", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc",
-            "n64", "z64", "v64", "nds", "pce", "iso", "cue", "chd", "rom",
-        ];
+        let console_ext = crate::downloader::get_console_default_rom_extension(&game.console_slug);
+        let mut extensions = vec![console_ext, "nes", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc", "n64", "z64", "v64", "nds", "pce", "iso", "cue", "chd", "zip", "7z", "rom"];
+        extensions.dedup();
 
+        // Helper to fix any obsolete .rom extension on disk
+        let fix_rom_extension = |p: PathBuf| -> PathBuf {
+            if p.extension().and_then(|s| s.to_str()) == Some("rom") {
+                let target_ext = crate::downloader::get_console_default_rom_extension(&game.console_slug);
+                let corrected = p.with_extension(target_ext);
+                if std::fs::rename(&p, &corrected).is_ok() {
+                    println!("[PLAY] Автоматически исправлено расширение файла: {} -> {}", p.display(), corrected.display());
+                    return corrected;
+                }
+            }
+            p
+        };
+
+        // 1. FIRST & PRIMARY: Search in the user's CURRENT configured download directory!
         for dir in &candidate_dirs {
             if !dir.exists() {
                 continue;
             }
 
             for ext in &extensions {
-                let p1 = dir.join(format!("{}.{}", safe_title, ext));
+                let p1 = dir.join(format!("{}.{}", safe_title_trimmed, ext));
                 if p1.exists() {
-                    return Some(p1);
+                    return Some(fix_rom_extension(p1));
                 }
-                let p2 = dir.join(format!("{}.{}", safe_title_trimmed, ext));
+                let p2 = dir.join(format!("{}.{}", safe_title, ext));
                 if p2.exists() {
-                    return Some(p2);
+                    return Some(fix_rom_extension(p2));
                 }
             }
 
@@ -481,9 +508,53 @@ impl RetroRomsApp {
                         if let Some(file_name) = entry_path.file_name().and_then(|n| n.to_str()) {
                             let file_lower = file_name.to_lowercase();
                             if file_lower.starts_with(&safe_title_lower) {
-                                return Some(entry_path);
+                                return Some(fix_rom_extension(entry_path));
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // 2. Check if game already has local_file_path that actually exists AND is inside current download directory
+        if let Some(p) = &game.local_file_path {
+            let path = PathBuf::from(p);
+            if path.exists() && path.starts_with(&download_dir) {
+                return Some(fix_rom_extension(path));
+            }
+        }
+
+        // 3. Check download history in SQLite for this game (preferring records inside current download directory)
+        for r in &self.download_history {
+            if r.status == DownloadStatus::Completed
+                && (r.game_id == game.id || r.game_title.eq_ignore_ascii_case(&game.title))
+            {
+                if let Some(p) = &r.local_path {
+                    let path = PathBuf::from(p);
+                    if path.exists() && path.starts_with(&download_dir) {
+                        return Some(fix_rom_extension(path));
+                    }
+                }
+            }
+        }
+
+        // 4. Fallback: if game has local_file_path anywhere else on disk that exists
+        if let Some(p) = &game.local_file_path {
+            let path = PathBuf::from(p);
+            if path.exists() {
+                return Some(fix_rom_extension(path));
+            }
+        }
+
+        // 5. Fallback: any completed record from DB anywhere on disk
+        for r in &self.download_history {
+            if r.status == DownloadStatus::Completed
+                && (r.game_id == game.id || r.game_title.eq_ignore_ascii_case(&game.title))
+            {
+                if let Some(p) = &r.local_path {
+                    let path = PathBuf::from(p);
+                    if path.exists() {
+                        return Some(fix_rom_extension(path));
                     }
                 }
             }
@@ -916,6 +987,7 @@ impl eframe::App for RetroRomsApp {
                     NavTab::Settings => {
                         let mut consoles_updated = false;
                         let mut theme_changed = None;
+                        let prev_dl_dir = self.settings.download_directory.clone();
 
                         render_settings_view(
                             ui,
@@ -925,6 +997,10 @@ impl eframe::App for RetroRomsApp {
                             &mut consoles_updated,
                             &mut theme_changed,
                         );
+
+                        if prev_dl_dir != self.settings.download_directory {
+                            self.sync_download_status();
+                        }
 
                         if consoles_updated {
                             let _ = self.db.update_console_order_and_enabled(&self.consoles);

@@ -43,6 +43,51 @@ pub struct DownloadManager {
     tx: UnboundedSender<DownloadEvent>,
 }
 
+pub fn get_console_default_rom_extension(slug: &str) -> &'static str {
+    match slug.to_lowercase().as_str() {
+        "dendy" => "nes",
+        "snes" => "sfc",
+        "genesis" | "32x" | "sms" | "sg-1000" => "bin",
+        "gb" => "gb",
+        "gbc" => "gbc",
+        "gba" => "gba",
+        "n64" => "z64",
+        "psx" => "iso",
+        "pce" | "pcecd" => "pce",
+        "lynx" => "lnx",
+        "ngp" => "ngp",
+        "ws" => "ws",
+        "vboy" => "vb",
+        "pmini" => "min",
+        "2600" => "a26",
+        "5200" => "a52",
+        "7800" => "a78",
+        "coleco" => "col",
+        "vectrex" => "vec",
+        "intellivision" => "int",
+        _ => "bin",
+    }
+}
+
+fn detect_file_type(path: &std::path::Path) -> Option<&'static str> {
+    let mut f = File::open(path).ok()?;
+    let mut magic = [0u8; 8];
+    let n = std::io::Read::read(&mut f, &mut magic).ok()?;
+    if n >= 4 && &magic[0..4] == b"PK\x03\x04" {
+        return Some("zip");
+    }
+    if n >= 6 && &magic[0..6] == b"7z\xbc\xaf\x27\x1c" {
+        return Some("7z");
+    }
+    if n >= 4 && &magic[0..4] == b"Rar!" {
+        return Some("rar");
+    }
+    if n >= 4 && &magic[0..4] == b"NES\x1a" {
+        return Some("nes");
+    }
+    None
+}
+
 impl DownloadManager {
     pub fn new(tx: UnboundedSender<DownloadEvent>) -> Self {
         let client = reqwest::Client::builder()
@@ -58,6 +103,7 @@ impl DownloadManager {
         &self,
         record_id: i64,
         game: GameCard,
+        version_file_name: Option<String>,
         direct_url: String,
         target_dir: PathBuf,
         console_folder_name: String,
@@ -115,9 +161,42 @@ impl DownloadManager {
                 return;
             }
 
+            // Verify Content-Type is not HTML (which indicates anti-hotlink or expired session)
+            if let Some(ct) = response.headers().get(reqwest::header::CONTENT_TYPE) {
+                if let Ok(ct_str) = ct.to_str() {
+                    if ct_str.contains("text/html") {
+                        let _ = tx.send(DownloadEvent::Failed {
+                            record_id,
+                            game_id: game.id.clone(),
+                            error: "Сервер вернул HTML вместо файла (возможно, ссылка устарела или требуется повторный запрос)".to_string(),
+                        });
+                        return;
+                    }
+                }
+            }
+
+            let content_disposition_filename = response
+                .headers()
+                .get(reqwest::header::CONTENT_DISPOSITION)
+                .and_then(|val| val.to_str().ok())
+                .and_then(|disp| {
+                    if let Some(idx) = disp.find("filename=") {
+                        let sub = &disp[idx + 9..];
+                        let clean = sub.trim_matches('"').split(';').next().unwrap_or("").trim();
+                        if !clean.is_empty() {
+                            Some(clean.to_string())
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
+
             let total_bytes = response.content_length().unwrap_or(0);
             let temp_dir = std::env::temp_dir();
-            let safe_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            let raw_safe_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+            let safe_title = raw_safe_title.trim_end_matches('.').trim().to_string();
             let temp_file_path = temp_dir.join(format!("retroms_{}_{}.tmp", record_id, safe_title));
 
             let mut file = match File::create(&temp_file_path) {
@@ -218,8 +297,16 @@ impl DownloadManager {
             match scan_zip_rom_entries(&temp_file_path) {
                 Ok(entries) => {
                     if entries.is_empty() {
-                        // Not a ZIP or contains no ROM entries: move file as is
-                        let target_file = final_console_dir.join(format!("{}.zip", safe_title));
+                        // Not a ZIP or contains no ROM entries: move file as is with detected extension
+                        let detected = detect_file_type(&temp_file_path);
+                        let ext = if detected == Some("7z") {
+                            "7z"
+                        } else if detected == Some("nes") {
+                            "nes"
+                        } else {
+                            "zip"
+                        };
+                        let target_file = final_console_dir.join(format!("{}.{}", safe_title, ext));
                         if let Err(_e) = std::fs::rename(&temp_file_path, &target_file) {
                             let _ = std::fs::copy(&temp_file_path, &target_file);
                             let _ = std::fs::remove_file(&temp_file_path);
@@ -227,7 +314,7 @@ impl DownloadManager {
                         let _ = tx.send(DownloadEvent::Completed {
                             record_id,
                             local_path: target_file.to_string_lossy().to_string(),
-                            message: format!("Сохранено: {}.zip", safe_title),
+                            message: format!("Сохранено: {}.{}", safe_title, ext),
                         });
                     } else if entries.len() == 1 {
                         let single_entry = &entries[0];
@@ -272,13 +359,39 @@ impl DownloadManager {
                     }
                 }
                 Err(_) => {
-                    // Not a zip archive, preserve file
-                    let target_file = final_console_dir.join(format!("{}.rom", safe_title));
-                    let _ = std::fs::rename(&temp_file_path, &target_file);
+                    // Not a standard zip archive (could be .7z, .nes, .sfc, etc.)
+                    let detected = detect_file_type(&temp_file_path);
+                    let ext = if detected == Some("7z") {
+                        "7z"
+                    } else if detected == Some("nes") {
+                        "nes"
+                    } else if detected == Some("rar") {
+                        "rar"
+                    } else if detected == Some("zip") {
+                        "zip"
+                    } else if let Some(v_name) = &version_file_name {
+                        std::path::Path::new(v_name)
+                            .extension()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_else(|| get_console_default_rom_extension(&game.console_slug))
+                    } else if let Some(cd_name) = &content_disposition_filename {
+                        std::path::Path::new(cd_name)
+                            .extension()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_else(|| get_console_default_rom_extension(&game.console_slug))
+                    } else {
+                        get_console_default_rom_extension(&game.console_slug)
+                    };
+
+                    let target_file = final_console_dir.join(format!("{}.{}", safe_title, ext));
+                    if let Err(_e) = std::fs::rename(&temp_file_path, &target_file) {
+                        let _ = std::fs::copy(&temp_file_path, &target_file);
+                        let _ = std::fs::remove_file(&temp_file_path);
+                    }
                     let _ = tx.send(DownloadEvent::Completed {
                         record_id,
                         local_path: target_file.to_string_lossy().to_string(),
-                        message: format!("Сохранено: {}", safe_title),
+                        message: format!("Сохранен файл: {}.{}", safe_title, ext),
                     });
                 }
             }
