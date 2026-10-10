@@ -93,14 +93,87 @@ pub fn render_settings_view(
 
             ui.add_space(12.0);
 
-            // 4. Emulators Configuration
+            // 4. RetroArch Universal Frontend Integration
             ui.group(|ui| {
-                ui.label(RichText::new("🎮 ИНТЕГРАЦИЯ С ЭМУЛЯТОРАМИ (ПК)").strong());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("🕹 ЕДИНЫЙ ЭМУЛЯТОР RETROARCH").strong().size(13.0));
+                    ui.label(RichText::new("(Multi-System Frontend)").weak().size(11.0));
+                });
+                ui.add_space(4.0);
+
+                ui.checkbox(
+                    &mut settings.use_retroarch,
+                    RichText::new("Использовать RetroArch для запуска всех игр (единый эмулятор)").strong(),
+                );
                 ui.label(
-                    RichText::new("Укажите пути к установленным на компьютере эмуляторам для прямого запуска игр:")
+                    RichText::new("Позволяет запускать игры любых платформ через один эмулятор с автозагрузкой ядер libretro.")
                         .weak()
                         .size(11.0),
                 );
+                ui.add_space(6.0);
+
+                ui.label(RichText::new("Путь к исполняемому файлу RetroArch (retroarch.exe):").size(12.0));
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut settings.retroarch_path)
+                            .desired_width(450.0)
+                            .hint_text("C:\\RetroArch-Win64\\retroarch.exe"),
+                    );
+                    if ui.button("Обзор...").clicked() {
+                        if let Some(exe_file) = pick_executable_file("Выберите исполняемый файл RetroArch") {
+                            settings.retroarch_path = exe_file.to_string_lossy().to_string();
+                        }
+                    }
+                });
+
+                ui.add_space(4.0);
+                ui.label(RichText::new("Дополнительные параметры запуска RetroArch:").size(12.0));
+                ui.add(
+                    egui::TextEdit::singleline(&mut settings.retroarch_args)
+                        .desired_width(450.0)
+                        .hint_text("-f (для полноэкранного режима)"),
+                );
+
+                ui.add_space(6.0);
+                ui.collapsing("⚙ Настройка ядер libretro для консолей (Cores)", |ui| {
+                    ui.label(
+                        RichText::new("По умолчанию заданы стабильные ядра. RetroArch ищет ядра в подкаталоге cores:")
+                            .weak()
+                            .size(11.0),
+                    );
+                    ui.add_space(4.0);
+
+                    let mut core_keys: Vec<String> = settings.retroarch_cores.keys().cloned().collect();
+                    core_keys.sort();
+
+                    for slug in core_keys {
+                        let core_entry = settings.retroarch_cores.entry(slug.clone()).or_default();
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(slug.to_uppercase()).strong().size(11.0));
+                            ui.add(egui::TextEdit::singleline(core_entry).desired_width(280.0));
+                        });
+                    }
+                });
+            });
+
+            ui.add_space(12.0);
+
+            // 5. Individual Emulators Configuration
+            ui.group(|ui| {
+                ui.label(RichText::new("🎮 ОТДЕЛЬНЫЕ ЭМУЛЯТОРЫ ДЛЯ КОНСОЛЕЙ (ПК)").strong());
+                if settings.use_retroarch {
+                    ui.label(
+                        RichText::new("ℹ Сейчас активен режим RetroArch. Отдельные эмуляторы используются, если RetroArch отключён.")
+                            .color(egui::Color32::from_rgb(255, 204, 0))
+                            .size(11.0),
+                    );
+                } else {
+                    ui.label(
+                        RichText::new("Укажите пути к отдельным эмуляторам на компьютере:")
+                            .weak()
+                            .size(11.0),
+                    );
+                }
                 ui.add_space(6.0);
 
                 let key_consoles = [

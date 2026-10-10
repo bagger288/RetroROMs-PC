@@ -5,7 +5,7 @@ use egui::{CentralPanel, RichText, SidePanel, TopBottomPanel};
 use retroms_desktop::config::AppSettings;
 use retroms_desktop::db::Database;
 use retroms_desktop::downloader::{DownloadEvent, DownloadManager};
-use retroms_desktop::integrations::{launch_emulator, reveal_in_file_explorer};
+use retroms_desktop::integrations::{launch_emulator, launch_retroarch, reveal_in_file_explorer};
 use retroms_desktop::models::{
     ConsoleInfo, DownloadRecord, DownloadStatus, GameCard, RomFileVersion, ZipExtractionRequest,
 };
@@ -428,14 +428,30 @@ impl RetroRomsApp {
         let emulator = self.settings.emulator_paths.get(&game.console_slug).cloned().unwrap_or_default();
         let args = self.settings.emulator_args.get(&game.console_slug).cloned().unwrap_or_default();
 
-        if emulator.is_empty() {
-            let _ = open::that(&local_path);
-            self.set_status(format!("Открыт файл: {}", local_path.display()));
-        } else {
+        if self.settings.use_retroarch && !self.settings.retroarch_path.trim().is_empty() {
+            let core = self.settings.get_retroarch_core_for_console(&game.console_slug);
+            match launch_retroarch(
+                &self.settings.retroarch_path,
+                &local_path,
+                core,
+                &self.settings.retroarch_args,
+            ) {
+                Ok(_) => {
+                    let core_display = core.unwrap_or("авто");
+                    self.set_status(format!("Запущен RetroArch [{}] для {}", core_display, game.title));
+                }
+                Err(e) => {
+                    self.set_status(format!("Не удалось запустить RetroArch: {}", e));
+                }
+            }
+        } else if !emulator.is_empty() {
             match launch_emulator(&emulator, &local_path, &args) {
                 Ok(_) => self.set_status(format!("Запущен эмулятор: {}", emulator)),
                 Err(e) => self.set_status(format!("Не удалось запустить эмулятор: {}", e)),
             }
+        } else {
+            let _ = open::that(&local_path);
+            self.set_status(format!("Открыт файл: {}", local_path.display()));
         }
     }
 }
