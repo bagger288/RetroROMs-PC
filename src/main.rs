@@ -185,7 +185,7 @@ impl RetroRomsApp {
         let mut completed_files: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         for r in &self.download_history {
             if r.status == DownloadStatus::Completed {
-                if let Some(path) = &r.local_file_path {
+                if let Some(path) = &r.local_path {
                     if !path.is_empty() && std::path::Path::new(path).exists() {
                         completed_files.insert(r.game_id.clone(), path.clone());
                         completed_files.insert(r.game_title.to_lowercase(), path.clone());
