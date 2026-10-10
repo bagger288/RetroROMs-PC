@@ -69,7 +69,7 @@ pub fn render_topbar(
             if ui
                 .selectable_label(
                     table_active,
-                    RichText::new("☰ Таблица")
+                    RichText::new("☰ Список")
                         .color(if table_active { theme.primary_color() } else { theme.text_color() }),
                 )
                 .clicked()

@@ -1,6 +1,6 @@
 use crate::models::{GameCard, RomFileVersion};
 use crate::theme::ThemePreset;
-use egui::{Align2, Color32, RichText, Rounding, ScrollArea, Vec2, Window};
+use egui::{Align2, Color32, Frame, RichText, Rounding, ScrollArea, Stroke, Vec2, Window};
 
 pub fn render_game_detail_window(
     ctx: &egui::Context,
@@ -188,44 +188,106 @@ pub fn render_game_detail_window(
                             }
                         });
                     } else {
-                        egui::Grid::new("rom_versions_grid")
-                            .striped(true)
-                            .min_col_width(80.0)
-                            .spacing([12.0, 8.0])
-                            .show(ui, |ui| {
-                                ui.label(RichText::new("Файл ROM").strong());
-                                ui.label(RichText::new("Категория").strong());
-                                ui.label(RichText::new("Регион / Тип").strong());
-                                ui.label(RichText::new("Размер").strong());
-                                ui.label(RichText::new("Скачать").strong());
-                                ui.end_row();
+                        let available_w = (ui.available_width() - 8.0).max(360.0);
+                        let dl_btn_w = 105.0;
 
-                                for ver in rom_versions {
-                                    ui.label(&ver.name);
-                                    ui.label(&ver.category);
+                        for ver in rom_versions {
+                            let card_frame = Frame::none()
+                                .fill(theme.card_bg_color())
+                                .rounding(Rounding::same(6.0))
+                                .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.2)))
+                                .inner_margin(egui::Margin {
+                                    left: 10.0,
+                                    right: 10.0,
+                                    top: 8.0,
+                                    bottom: 8.0,
+                                });
 
-                                    let badge_color = match ver.region_or_type.as_str() {
-                                        "RUS" => Color32::from_rgb(0, 200, 255),
-                                        "USA" => Color32::from_rgb(76, 175, 80),
-                                        "EUR" => Color32::from_rgb(255, 193, 7),
-                                        "JAP" => Color32::from_rgb(255, 87, 34),
-                                        "HACK" => Color32::from_rgb(156, 39, 176),
-                                        "GOODSET" => Color32::from_rgb(233, 30, 99),
-                                        _ => theme.text_color(),
+                            card_frame.show(ui, |ui| {
+                                ui.set_width(available_w);
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 10.0;
+
+                                    let (badge_bg, badge_fg) = match ver.region_or_type.as_str() {
+                                        "RUS" => (Color32::from_rgb(0, 100, 160), Color32::from_rgb(180, 235, 255)),
+                                        "USA" => (Color32::from_rgb(30, 120, 60), Color32::from_rgb(200, 255, 210)),
+                                        "EUR" => (Color32::from_rgb(150, 110, 20), Color32::from_rgb(255, 240, 190)),
+                                        "JAP" => (Color32::from_rgb(160, 50, 30), Color32::from_rgb(255, 210, 200)),
+                                        "HACK" => (Color32::from_rgb(110, 40, 140), Color32::from_rgb(240, 200, 255)),
+                                        "GOODSET" => (Color32::from_rgb(160, 30, 90), Color32::from_rgb(255, 200, 230)),
+                                        _ => (Color32::from_rgb(50, 55, 70), Color32::from_white_alpha(200)),
                                     };
-                                    ui.label(RichText::new(&ver.region_or_type).color(badge_color).strong());
 
-                                    ui.label(&ver.size);
+                                    Frame::none()
+                                        .fill(badge_bg)
+                                        .rounding(Rounding::same(4.0))
+                                        .inner_margin(egui::Margin::symmetric(6.0, 3.0))
+                                        .show(ui, |ui| {
+                                            ui.add_sized(
+                                                [52.0, 16.0],
+                                                egui::Label::new(
+                                                    RichText::new(&ver.region_or_type)
+                                                        .color(badge_fg)
+                                                        .size(10.5)
+                                                        .strong(),
+                                                ),
+                                            );
+                                        });
 
-                                    if ui
-                                        .button(RichText::new("⬇ Скачать").color(theme.primary_color()))
-                                        .clicked()
-                                    {
-                                        *on_download_version = Some((g.clone(), ver.clone()));
-                                    }
-                                    ui.end_row();
-                                }
+                                    let text_width = (available_w - 52.0 - dl_btn_w - 44.0).max(120.0);
+                                    ui.allocate_ui_with_layout(
+                                        Vec2::new(text_width, 36.0),
+                                        egui::Layout::top_down(egui::Align::Min),
+                                        |ui| {
+                                            let fn_label = ui.add_sized(
+                                                [text_width, 18.0],
+                                                egui::Label::new(
+                                                    RichText::new(&ver.name)
+                                                        .size(12.5)
+                                                        .strong()
+                                                        .color(theme.text_color()),
+                                                )
+                                                .truncate(),
+                                            );
+                                            fn_label.on_hover_text(&ver.name);
+
+                                            ui.horizontal(|ui| {
+                                                ui.spacing_mut().item_spacing.x = 6.0;
+                                                if !ver.category.is_empty() {
+                                                    ui.label(
+                                                        RichText::new(&ver.category)
+                                                            .size(10.5)
+                                                            .color(Color32::from_white_alpha(150)),
+                                                    );
+                                                    ui.label(RichText::new("•").size(10.0).weak());
+                                                }
+                                                ui.label(
+                                                    RichText::new(format!("Размер: {}", ver.size))
+                                                        .size(10.5)
+                                                        .color(Color32::from_white_alpha(180)),
+                                                );
+                                            });
+                                        },
+                                    );
+
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        let dl_btn = ui.add_sized(
+                                            [dl_btn_w, 28.0],
+                                            egui::Button::new(
+                                                RichText::new("⬇ Скачать")
+                                                    .color(theme.primary_color())
+                                                    .strong()
+                                                    .size(11.5),
+                                            ),
+                                        );
+                                        if dl_btn.on_hover_text("Скачать эту версию ROM").clicked() {
+                                            *on_download_version = Some((g.clone(), ver.clone()));
+                                        }
+                                    });
+                                });
                             });
+                            ui.add_space(4.0);
+                        }
                     }
 
                     ui.add_space(20.0);

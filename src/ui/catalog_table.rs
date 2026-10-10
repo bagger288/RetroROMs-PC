@@ -1,6 +1,6 @@
 use crate::models::GameCard;
 use crate::theme::ThemePreset;
-use egui::{Color32, RichText, Rounding, ScrollArea, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Rounding, ScrollArea, Stroke, Ui, Vec2};
 
 pub fn render_catalog_table(
     ui: &mut Ui,
@@ -19,6 +19,7 @@ pub fn render_catalog_table(
         ui.vertical_centered(|ui| {
             ui.add_space(40.0);
             ui.label(RichText::new("Игры не найдены").size(18.0).color(theme.text_color()));
+            ui.label(RichText::new("Попробуйте сменить категорию или поисковый запрос").weak());
         });
         return;
     }
@@ -27,144 +28,236 @@ pub fn render_catalog_table(
         .id_salt("catalog_table_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let available_width = ui.available_width().max(600.0);
-            // Reserve fixed sizes for other columns, remaining for Title
-            // Cover: 44, Platform: 150, Year: 55, Rating: 65, Size: 65, Actions: 100, Spacings: ~100
-            let title_col_width = (available_width - 490.0).max(220.0);
+            let row_spacing = 6.0;
+            let thumb_size = Vec2::new(92.0, 58.0);
+            let right_actions_width = 155.0; // Fav star (32) + spacing (8) + Download/Play btn (105) + margins
 
-            egui::Grid::new("catalog_table_grid")
-                .num_columns(7)
-                .spacing([14.0, 6.0])
-                .striped(true)
-                .show(ui, |ui| {
-                    // Header Row
-                    ui.label(RichText::new("Обложка").strong().size(12.0));
-                    ui.add_sized([title_col_width, 24.0], egui::Label::new(RichText::new("Название").strong().size(12.0)));
-                    ui.add_sized([150.0, 24.0], egui::Label::new(RichText::new("Платформа").strong().size(12.0)));
-                    ui.add_sized([55.0, 24.0], egui::Label::new(RichText::new("Год").strong().size(12.0)));
-                    ui.add_sized([65.0, 24.0], egui::Label::new(RichText::new("Рейтинг").strong().size(12.0)));
-                    ui.add_sized([65.0, 24.0], egui::Label::new(RichText::new("Размер").strong().size(12.0)));
-                    ui.add_sized([100.0, 24.0], egui::Label::new(RichText::new("Действия").strong().size(12.0)));
-                    ui.end_row();
+            for game in games {
+                let available_w = (ui.available_width() - 14.0).max(360.0);
 
-                    for game in games {
-                        // Col 0: Thumbnail (centered fixed size, clickable for zoom)
-                        let thumb_size = Vec2::new(36.0, 36.0);
-                        ui.allocate_ui_with_layout(
-                            thumb_size,
-                            egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-                            |ui| {
-                                if let Some(cover_url) = &game.cover_url {
-                                    if !cover_url.is_empty() {
-                                        let resp = ui.add(
-                                            egui::Image::new(cover_url)
-                                                .max_size(thumb_size)
-                                                .rounding(Rounding::same(4.0))
-                                                .sense(egui::Sense::click()),
-                                        );
-                                        if resp.on_hover_text("🔍 Нажмите, чтобы рассмотреть обложку").clicked() {
-                                            *on_view_image = Some((format!("Обложка: {}", game.title), cover_url.clone()));
+                let card_frame = Frame::none()
+                    .fill(theme.card_bg_color())
+                    .rounding(Rounding::same(8.0))
+                    .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.2)))
+                    .inner_margin(egui::Margin {
+                        left: 8.0,
+                        right: 12.0,
+                        top: 6.0,
+                        bottom: 6.0,
+                    });
+
+                let row_resp = card_frame.show(ui, |ui| {
+                    ui.set_width(available_w);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 12.0;
+
+                        // 1. Cover Thumbnail (92x58px with dark backdrop, clickable for full zoom)
+                        let thumb_frame = Frame::none()
+                            .fill(Color32::from_rgb(18, 22, 34))
+                            .rounding(Rounding::same(6.0))
+                            .show(ui, |ui| {
+                                ui.set_min_size(thumb_size);
+                                ui.set_max_size(thumb_size);
+                                ui.centered_and_justified(|ui| {
+                                    if let Some(cover_url) = &game.cover_url {
+                                        if !cover_url.is_empty() {
+                                            ui.add(
+                                                egui::Image::new(cover_url)
+                                                    .max_size(thumb_size)
+                                                    .rounding(Rounding::same(6.0)),
+                                            );
+                                        } else {
+                                            ui.label(RichText::new("🎮").size(24.0));
                                         }
                                     } else {
-                                        ui.label(RichText::new("🎮").size(18.0));
+                                        ui.label(RichText::new("🎮").size(24.0));
                                     }
-                                } else {
-                                    ui.label(RichText::new("🎮").size(18.0));
+                                });
+                            });
+
+                        let thumb_interact = ui.interact(
+                            thumb_frame.response.rect,
+                            ui.id().with("list_cover_click").with(&game.id),
+                            egui::Sense::click(),
+                        );
+                        if thumb_interact.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if thumb_interact
+                            .on_hover_text("🔍 Нажмите, чтобы рассмотреть обложку (скроллинг для зума)")
+                            .clicked()
+                        {
+                            if let Some(cover_url) = &game.cover_url {
+                                if !cover_url.is_empty() {
+                                    *on_view_image = Some((format!("Обложка: {}", game.title), cover_url.clone()));
                                 }
+                            }
+                        }
+
+                        // 2. Middle section: Game Title + Metadata Badges
+                        let middle_width = (available_w - thumb_size.x - right_actions_width - 36.0).max(120.0);
+
+                        let info_resp = ui.allocate_ui_with_layout(
+                            Vec2::new(middle_width, 58.0),
+                            egui::Layout::top_down(egui::Align::Min),
+                            |ui| {
+                                ui.add_space(2.0);
+
+                                // Line 1: Game Title
+                                let title_text = RichText::new(&game.title)
+                                    .size(14.0)
+                                    .strong()
+                                    .color(theme.text_color());
+                                let title_label = ui.add_sized(
+                                    [middle_width, 22.0],
+                                    egui::Label::new(title_text).truncate(),
+                                );
+                                title_label.on_hover_text(&game.title);
+
+                                ui.add_space(6.0);
+
+                                // Line 2: Metadata Badges (Platform, Year, Genre, Rating, Size)
+                                ui.horizontal(|ui| {
+                                    ui.spacing_mut().item_spacing.x = 8.0;
+
+                                    // Platform Pill Badge
+                                    Frame::none()
+                                        .fill(theme.primary_color().gamma_multiply(0.18))
+                                        .rounding(Rounding::same(4.0))
+                                        .inner_margin(egui::Margin::symmetric(6.0, 2.0))
+                                        .show(ui, |ui| {
+                                            ui.label(
+                                                RichText::new(&game.console_name)
+                                                    .size(10.5)
+                                                    .color(theme.primary_color())
+                                                    .strong(),
+                                            );
+                                        });
+
+                                    // Year
+                                    if !game.year.is_empty() {
+                                        ui.label(
+                                            RichText::new(&game.year)
+                                                .size(11.0)
+                                                .color(Color32::from_white_alpha(150)),
+                                        );
+                                        ui.label(RichText::new("•").size(10.0).weak());
+                                    }
+
+                                    // Genre
+                                    if !game.genre.is_empty() && game.genre != "Не указан" {
+                                        ui.label(
+                                            RichText::new(&game.genre)
+                                                .size(11.0)
+                                                .color(Color32::from_white_alpha(150)),
+                                        );
+                                        ui.label(RichText::new("•").size(10.0).weak());
+                                    }
+
+                                    // Rating Badge with Star
+                                    ui.label(
+                                        RichText::new(format!("★ {:.1}", game.rating))
+                                            .size(11.5)
+                                            .color(Color32::from_rgb(255, 204, 0))
+                                            .strong(),
+                                    );
+
+                                    // File Size
+                                    if !game.file_size.is_empty() {
+                                        ui.label(RichText::new("•").size(10.0).weak());
+                                        ui.label(
+                                            RichText::new(&game.file_size)
+                                                .size(11.0)
+                                                .color(Color32::from_white_alpha(140)),
+                                        );
+                                    }
+                                });
                             },
                         );
 
-                        // Col 1: Title (Strictly truncated button/label so long titles never push columns)
-                        let title_text = RichText::new(&game.title)
-                            .color(theme.text_color())
-                            .strong();
-                        let title_resp = ui.add_sized(
-                            [title_col_width, 36.0],
-                            egui::Button::new(title_text)
-                                .truncate()
-                                .frame(false),
+                        // Clicking anywhere on title/info area opens game details
+                        let info_interact = ui.interact(
+                            info_resp.response.rect,
+                            ui.id().with("list_info_click").with(&game.id),
+                            egui::Sense::click(),
                         );
-                        if title_resp.clicked() {
+                        if info_interact.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if info_interact
+                            .on_hover_text("📖 Нажмите, чтобы открыть подробную информацию об игре")
+                            .clicked()
+                        {
                             *on_game_clicked = Some(game.clone());
                         }
 
-                        // Col 2: Platform (Strictly fixed width)
-                        ui.add_sized(
-                            [150.0, 36.0],
-                            egui::Label::new(
-                                RichText::new(&game.console_name)
-                                    .color(theme.primary_color())
-                                    .size(11.0),
-                            )
-                            .truncate(),
-                        );
+                        // 3. Right Section: Action Buttons (Always cleanly docked to the right edge)
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
 
-                        // Col 3: Year (Strictly fixed width)
-                        ui.add_sized(
-                            [55.0, 36.0],
-                            egui::Label::new(RichText::new(&game.year).size(11.0).weak()),
-                        );
-
-                        // Col 4: Rating (Strictly fixed width)
-                        ui.add_sized(
-                            [65.0, 36.0],
-                            egui::Label::new(
-                                RichText::new(format!("★ {:.1}", game.rating))
-                                    .size(11.0)
-                                    .color(Color32::from_rgb(255, 204, 0)),
-                            ),
-                        );
-
-                        // Col 5: Size (Strictly fixed width)
-                        ui.add_sized(
-                            [65.0, 36.0],
-                            egui::Label::new(RichText::new(&game.file_size).size(11.0).weak()),
-                        );
-
-                        // Col 6: Actions (Strictly fixed width, Favorite + Download/Play)
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(100.0, 36.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                // Fav
-                                let fav_text = if game.is_favorite { "★" } else { "☆" };
-                                let fav_color = if game.is_favorite {
-                                    Color32::from_rgb(255, 215, 0)
-                                } else {
-                                    Color32::from_white_alpha(160)
-                                };
+                            // Main Action: Download or Play button
+                            let btn_w = 105.0;
+                            let btn_h = 30.0;
+                            if game.is_downloaded {
                                 if ui
-                                    .button(RichText::new(fav_text).color(fav_color))
-                                    .on_hover_text("Избранное")
+                                    .add_sized(
+                                        [btn_w, btn_h],
+                                        egui::Button::new(
+                                            RichText::new("▶ Играть")
+                                                .color(Color32::from_rgb(0, 230, 118))
+                                                .strong()
+                                                .size(12.0),
+                                        ),
+                                    )
+                                    .on_hover_text("Запустить в эмуляторе")
                                     .clicked()
                                 {
-                                    *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
+                                    *on_play_clicked = Some(game.clone());
                                 }
-
-                                // Play or Download (opens ROM versions list)
-                                if game.is_downloaded {
-                                    if ui
-                                        .button(RichText::new("▶ Играть").color(Color32::from_rgb(0, 230, 118)))
-                                        .on_hover_text("Запустить в эмуляторе")
-                                        .clicked()
-                                    {
-                                        *on_play_clicked = Some(game.clone());
-                                    }
-                                } else if ui
-                                    .button(RichText::new("⬇").color(theme.primary_color()).strong())
-                                    .on_hover_text("Выбрать версию ROM для скачивания")
-                                    .clicked()
-                                {
+                            } else {
+                                let dl_btn = ui.add_sized(
+                                    [btn_w, btn_h],
+                                    egui::Button::new(
+                                        RichText::new("⬇ Скачать")
+                                            .color(theme.primary_color())
+                                            .strong()
+                                            .size(12.0),
+                                    ),
+                                );
+                                if dl_btn.on_hover_text("Выбрать версию ROM для скачивания").clicked() {
                                     *on_download_clicked = Some(game.clone());
                                 }
-                            },
-                        );
+                            }
 
-                        ui.end_row();
-                    }
+                            // Favorite Star button
+                            let fav_text = if game.is_favorite { "★" } else { "☆" };
+                            let fav_color = if game.is_favorite {
+                                Color32::from_rgb(255, 215, 0)
+                            } else {
+                                Color32::from_white_alpha(160)
+                            };
+                            if ui
+                                .add_sized(
+                                    [32.0, btn_h],
+                                    egui::Button::new(RichText::new(fav_text).color(fav_color).size(14.0)),
+                                )
+                                .on_hover_text(if game.is_favorite { "Удалить из избранного" } else { "Добавить в избранное" })
+                                .clicked()
+                            {
+                                *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
+                            }
+                        });
+                    });
                 });
 
-            // Pagination Controls (only shown if multiple pages)
+                if row_resp.response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+
+                ui.add_space(row_spacing);
+            }
+
+            // Pagination Controls
             if total_pages > 1 {
                 ui.add_space(16.0);
                 ui.separator();
