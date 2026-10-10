@@ -1,6 +1,6 @@
 use crate::models::{GameCard, RomFileVersion};
 use crate::theme::ThemePreset;
-use egui::{Color32, RichText, Rounding, ScrollArea, Vec2, Window};
+use egui::{Align2, Color32, RichText, Rounding, ScrollArea, Vec2, Window};
 
 pub fn render_game_detail_window(
     ctx: &egui::Context,
@@ -11,6 +11,7 @@ pub fn render_game_detail_window(
     on_download_version: &mut Option<(GameCard, RomFileVersion)>,
     on_play_clicked: &mut Option<GameCard>,
     on_reveal_clicked: &mut Option<String>,
+    on_view_image: &mut Option<(String, String)>,
 ) {
     let mut is_open = game.is_some();
     if !is_open {
@@ -22,6 +23,8 @@ pub fn render_game_detail_window(
     Window::new(format!("🎮 {}", g.title))
         .open(&mut is_open)
         .resizable(true)
+        .pivot(Align2::CENTER_CENTER)
+        .default_pos(ctx.screen_rect().center())
         .default_size([720.0, 600.0])
         .min_width(500.0)
         .min_height(400.0)
@@ -32,11 +35,15 @@ pub fn render_game_detail_window(
                     ui.horizontal(|ui| {
                         // Cover / Large Screenshot
                         if let Some(cover) = &g.cover_url {
-                            ui.add(
+                            let img_resp = ui.add(
                                 egui::Image::new(cover)
                                     .fit_to_exact_size(Vec2::new(180.0, 200.0))
-                                    .rounding(Rounding::same(8.0)),
+                                    .rounding(Rounding::same(8.0))
+                                    .sense(egui::Sense::click()),
                             );
+                            if img_resp.on_hover_text("🔍 Нажмите, чтобы увеличить обложку").clicked() {
+                                *on_view_image = Some((format!("Обложка: {}", g.title), cover.clone()));
+                            }
                         }
 
                         ui.add_space(16.0);
@@ -112,12 +119,16 @@ pub fn render_game_detail_window(
                             .id_salt("game_screenshots_scroll")
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    for ss_url in &g.screenshot_urls {
-                                        ui.add(
+                                    for (ss_idx, ss_url) in g.screenshot_urls.iter().enumerate() {
+                                        let ss_resp = ui.add(
                                             egui::Image::new(ss_url)
                                                 .fit_to_exact_size(Vec2::new(160.0, 110.0))
-                                                .rounding(Rounding::same(4.0)),
+                                                .rounding(Rounding::same(4.0))
+                                                .sense(egui::Sense::click()),
                                         );
+                                        if ss_resp.on_hover_text("🔍 Нажмите, чтобы рассмотреть скриншот").clicked() {
+                                            *on_view_image = Some((format!("Скриншот #{}: {}", ss_idx + 1, g.title), ss_url.clone()));
+                                        }
                                         ui.add_space(8.0);
                                     }
                                 });

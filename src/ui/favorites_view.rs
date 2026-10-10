@@ -14,6 +14,7 @@ pub fn render_favorites_view(
     on_download_clicked: &mut Option<GameCard>,
     on_favorite_toggled: &mut Option<(GameCard, bool)>,
     on_play_clicked: &mut Option<GameCard>,
+    on_view_image: &mut Option<(String, String)>,
 ) {
     ui.add_space(8.0);
     ui.horizontal(|ui| {
@@ -49,6 +50,7 @@ pub fn render_favorites_view(
                 on_favorite_toggled,
                 on_play_clicked,
                 &mut dummy_page,
+                on_view_image,
             );
         }
         ViewMode::Table => {
@@ -63,6 +65,7 @@ pub fn render_favorites_view(
                 on_favorite_toggled,
                 on_play_clicked,
                 &mut dummy_page,
+                on_view_image,
             );
         }
     }

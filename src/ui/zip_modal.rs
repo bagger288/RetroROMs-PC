@@ -1,6 +1,6 @@
 use crate::models::ZipExtractionRequest;
 use crate::theme::ThemePreset;
-use egui::{RichText, ScrollArea, Window};
+use egui::{Align2, RichText, ScrollArea, Window};
 
 pub fn render_zip_modal(
     ctx: &egui::Context,
@@ -19,6 +19,8 @@ pub fn render_zip_modal(
     Window::new(format!("📦 Распаковка архива: {}", req.game.title))
         .open(&mut is_open)
         .resizable(true)
+        .pivot(Align2::CENTER_CENTER)
+        .default_pos(ctx.screen_rect().center())
         .default_size([580.0, 480.0])
         .min_width(450.0)
         .min_height(350.0)

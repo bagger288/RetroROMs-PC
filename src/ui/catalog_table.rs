@@ -13,6 +13,7 @@ pub fn render_catalog_table(
     on_favorite_toggled: &mut Option<(GameCard, bool)>,
     on_play_clicked: &mut Option<GameCard>,
     on_page_changed: &mut Option<usize>,
+    on_view_image: &mut Option<(String, String)>,
 ) {
     if games.is_empty() {
         ui.vertical_centered(|ui| {
@@ -28,8 +29,8 @@ pub fn render_catalog_table(
         .show(ui, |ui| {
             let available_width = ui.available_width().max(600.0);
             // Reserve fixed sizes for other columns, remaining for Title
-            // Cover: 44, Platform: 150, Year: 55, Rating: 65, Size: 65, Actions: 130, Spacings: ~100
-            let title_col_width = (available_width - 520.0).max(220.0);
+            // Cover: 44, Platform: 150, Year: 55, Rating: 65, Size: 65, Actions: 100, Spacings: ~100
+            let title_col_width = (available_width - 490.0).max(220.0);
 
             egui::Grid::new("catalog_table_grid")
                 .num_columns(7)
@@ -43,11 +44,11 @@ pub fn render_catalog_table(
                     ui.add_sized([55.0, 24.0], egui::Label::new(RichText::new("Год").strong().size(12.0)));
                     ui.add_sized([65.0, 24.0], egui::Label::new(RichText::new("Рейтинг").strong().size(12.0)));
                     ui.add_sized([65.0, 24.0], egui::Label::new(RichText::new("Размер").strong().size(12.0)));
-                    ui.add_sized([130.0, 24.0], egui::Label::new(RichText::new("Действия").strong().size(12.0)));
+                    ui.add_sized([100.0, 24.0], egui::Label::new(RichText::new("Действия").strong().size(12.0)));
                     ui.end_row();
 
                     for game in games {
-                        // Col 0: Thumbnail (centered fixed size)
+                        // Col 0: Thumbnail (centered fixed size, clickable for zoom)
                         let thumb_size = Vec2::new(36.0, 36.0);
                         ui.allocate_ui_with_layout(
                             thumb_size,
@@ -55,11 +56,15 @@ pub fn render_catalog_table(
                             |ui| {
                                 if let Some(cover_url) = &game.cover_url {
                                     if !cover_url.is_empty() {
-                                        ui.add(
+                                        let resp = ui.add(
                                             egui::Image::new(cover_url)
                                                 .max_size(thumb_size)
-                                                .rounding(Rounding::same(4.0)),
+                                                .rounding(Rounding::same(4.0))
+                                                .sense(egui::Sense::click()),
                                         );
+                                        if resp.on_hover_text("🔍 Нажмите, чтобы рассмотреть обложку").clicked() {
+                                            *on_view_image = Some((format!("Обложка: {}", game.title), cover_url.clone()));
+                                        }
                                     } else {
                                         ui.label(RichText::new("🎮").size(18.0));
                                     }
@@ -116,9 +121,9 @@ pub fn render_catalog_table(
                             egui::Label::new(RichText::new(&game.file_size).size(11.0).weak()),
                         );
 
-                        // Col 6: Actions (Strictly fixed width)
+                        // Col 6: Actions (Strictly fixed width, Favorite + Download/Play)
                         ui.allocate_ui_with_layout(
-                            Vec2::new(130.0, 36.0),
+                            Vec2::new(100.0, 36.0),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
                                 // Fav
@@ -136,29 +141,21 @@ pub fn render_catalog_table(
                                     *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
                                 }
 
-                                // Play or Download
+                                // Play or Download (opens ROM versions list)
                                 if game.is_downloaded {
                                     if ui
                                         .button(RichText::new("▶ Играть").color(Color32::from_rgb(0, 230, 118)))
+                                        .on_hover_text("Запустить в эмуляторе")
                                         .clicked()
                                     {
                                         *on_play_clicked = Some(game.clone());
                                     }
                                 } else if ui
-                                    .button(RichText::new("⬇").color(theme.primary_color()))
-                                    .on_hover_text("Скачать")
+                                    .button(RichText::new("⬇").color(theme.primary_color()).strong())
+                                    .on_hover_text("Выбрать версию ROM для скачивания")
                                     .clicked()
                                 {
                                     *on_download_clicked = Some(game.clone());
-                                }
-
-                                // Details
-                                if ui
-                                    .button("ℹ")
-                                    .on_hover_text("Подробнее")
-                                    .clicked()
-                                {
-                                    *on_game_clicked = Some(game.clone());
                                 }
                             },
                         );

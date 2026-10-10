@@ -13,6 +13,7 @@ pub fn render_catalog_grid(
     on_favorite_toggled: &mut Option<(GameCard, bool)>,
     on_play_clicked: &mut Option<GameCard>,
     on_page_changed: &mut Option<usize>,
+    on_view_image: &mut Option<(String, String)>,
 ) {
     if games.is_empty() {
         ui.vertical_centered(|ui| {
@@ -56,6 +57,7 @@ pub fn render_catalog_grid(
                                 on_download_clicked,
                                 on_favorite_toggled,
                                 on_play_clicked,
+                                on_view_image,
                             );
                             if col + 1 < cols {
                                 ui.add_space(spacing);
@@ -107,6 +109,7 @@ fn render_game_card(
     on_download_clicked: &mut Option<GameCard>,
     on_favorite_toggled: &mut Option<(GameCard, bool)>,
     on_play_clicked: &mut Option<GameCard>,
+    on_view_image: &mut Option<(String, String)>,
 ) {
     let frame = Frame::none()
         .fill(theme.card_bg_color())
@@ -114,7 +117,7 @@ fn render_game_card(
         .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.3)))
         .inner_margin(8.0);
 
-    frame.show(ui, |ui| {
+    let frame_response = frame.show(ui, |ui| {
         ui.set_width(width);
         ui.set_height(height);
 
@@ -123,7 +126,7 @@ fn render_game_card(
             let img_height = 140.0;
             let img_box_size = Vec2::new(inner_width, img_height);
 
-            // 1. Centered Image Container with dark background and true centering
+            // 1. Centered Image Container with dark background
             Frame::none()
                 .fill(Color32::from_rgb(18, 22, 34))
                 .rounding(Rounding::same(6.0))
@@ -137,11 +140,15 @@ fn render_game_card(
                                 let resp = ui.add(
                                     egui::Image::new(cover_url)
                                         .max_size(img_box_size)
-                                        .rounding(Rounding::same(6.0)),
+                                        .rounding(Rounding::same(6.0))
+                                        .sense(egui::Sense::click()),
                                 );
                                 image_rendered = true;
-                                if resp.clicked() {
-                                    *on_game_clicked = Some(game.clone());
+                                if resp
+                                    .on_hover_text("🔍 Нажмите, чтобы рассмотреть обложку (скроллинг для зума)")
+                                    .clicked()
+                                {
+                                    *on_view_image = Some((format!("Обложка: {}", game.title), cover_url.clone()));
                                 }
                             }
                         }
@@ -159,7 +166,8 @@ fn render_game_card(
                 .color(theme.text_color())
                 .strong()
                 .size(13.0);
-            if ui.add(egui::Label::new(title_text).truncate()).clicked() {
+            let title_resp = ui.add(egui::Label::new(title_text).truncate().sense(egui::Sense::click()));
+            if title_resp.on_hover_text("📖 Нажмите, чтобы открыть информацию об игре").clicked() {
                 *on_game_clicked = Some(game.clone());
             }
 
@@ -201,7 +209,7 @@ fn render_game_card(
 
             ui.add_space(6.0);
 
-            // 5. Action Buttons centered horizontally across card
+            // 5. Action Buttons (Favorite + Download/Play) - Info button removed!
             let btn_row_size = Vec2::new(inner_width, 28.0);
             ui.allocate_ui_with_layout(
                 btn_row_size,
@@ -218,15 +226,15 @@ fn render_game_card(
                         Color32::from_white_alpha(160)
                     };
                     if ui
-                        .add_sized([30.0, 26.0], egui::Button::new(RichText::new(fav_text).color(fav_color).size(13.0)))
+                        .add_sized([32.0, 26.0], egui::Button::new(RichText::new(fav_text).color(fav_color).size(13.0)))
                         .on_hover_text("Избранное")
                         .clicked()
                     {
                         *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
                     }
 
-                    // Main Action: Download or Play (symmetrically centered)
-                    let main_btn_width = (inner_width - 76.0).max(75.0);
+                    // Main Action: Download (opens ROM versions list) or Play
+                    let main_btn_width = (inner_width - 38.0).max(80.0);
                     if game.is_downloaded {
                         if ui
                             .add_sized(
@@ -249,24 +257,30 @@ fn render_game_card(
                             egui::Button::new(
                                 RichText::new("⬇ Скачать")
                                     .color(theme.primary_color())
+                                    .strong()
                                     .size(11.0),
                             ),
                         );
-                        if dl_btn.clicked() {
+                        if dl_btn.on_hover_text("Выбрать версию ROM для скачивания").clicked() {
                             *on_download_clicked = Some(game.clone());
                         }
-                    }
-
-                    // Details Button
-                    if ui
-                        .add_sized([30.0, 26.0], egui::Button::new(RichText::new("ℹ").size(12.0)))
-                        .on_hover_text("Подробнее об игре")
-                        .clicked()
-                    {
-                        *on_game_clicked = Some(game.clone());
                     }
                 },
             );
         });
     });
+
+    // Make the entire card frame clickable to open game details (unless a button or cover was clicked)
+    let card_rect = frame_response.response.rect;
+    let card_interact = ui.interact(card_rect, ui.id().with("card_click").with(&game.id), egui::Sense::click());
+    if card_interact.on_hover_text("📖 Нажмите на карточку, чтобы открыть информацию об игре").clicked() {
+        if on_download_clicked.is_none()
+            && on_play_clicked.is_none()
+            && on_favorite_toggled.is_none()
+            && on_view_image.is_none()
+            && on_game_clicked.is_none()
+        {
+            *on_game_clicked = Some(game.clone());
+        }
+    }
 }

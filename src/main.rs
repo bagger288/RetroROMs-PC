@@ -14,6 +14,8 @@ use retroms_desktop::ui::catalog_table::render_catalog_table;
 use retroms_desktop::ui::downloads_view::render_downloads_view;
 use retroms_desktop::ui::favorites_view::render_favorites_view;
 use retroms_desktop::ui::game_detail::render_game_detail_window;
+use retroms_desktop::ui::image_viewer_modal::{render_image_viewer_modal, ImageViewerState};
+use retroms_desktop::ui::rom_versions_modal::render_rom_versions_modal;
 use retroms_desktop::ui::settings_view::render_settings_view;
 use retroms_desktop::ui::sidebar::render_sidebar;
 use retroms_desktop::ui::topbar::render_topbar;
@@ -90,8 +92,10 @@ pub struct RetroRomsApp {
 
     // Overlays / Modals
     selected_game_for_detail: Option<GameCard>,
+    selected_game_for_versions: Option<GameCard>,
     rom_versions: Vec<RomFileVersion>,
     is_loading_versions: bool,
+    image_viewer_state: Option<ImageViewerState>,
     zip_extraction_request: Option<ZipExtractionRequest>,
 
     // Network Client
@@ -148,8 +152,10 @@ impl RetroRomsApp {
             download_tokens: HashMap::new(),
             download_history: Vec::new(),
             selected_game_for_detail: None,
+            selected_game_for_versions: None,
             rom_versions: Vec::new(),
             is_loading_versions: false,
+            image_viewer_state: None,
             zip_extraction_request: None,
             scraper,
         };
@@ -341,8 +347,31 @@ impl RetroRomsApp {
         self.selected_game_for_detail = Some(full_game);
     }
 
+    pub fn open_rom_versions_modal(&mut self, game: &GameCard) {
+        self.is_loading_versions = true;
+        self.rom_versions.clear();
+        self.selected_game_for_versions = Some(game.clone());
+
+        let scraper = self.scraper.clone();
+        let section = game.section.clone();
+        let slug = game.console_slug.clone();
+        let mfile_id_opt = game.mfile_id.clone();
+
+        if let Some(mid) = &mfile_id_opt {
+            let versions_res = tokio::task::block_in_place(|| {
+                tokio::runtime::Handle::current().block_on(async {
+                    scraper.fetch_rom_versions(&section, &slug, mid).await
+                })
+            });
+            if let Ok(versions) = versions_res {
+                self.rom_versions = versions;
+            }
+        }
+        self.is_loading_versions = false;
+    }
+
     pub fn trigger_load_rom_versions(&mut self, game: &GameCard) {
-        self.open_game_detail(game);
+        self.open_rom_versions_modal(game);
     }
 
     pub fn start_game_download(&mut self, game: GameCard, version: Option<RomFileVersion>) {
@@ -743,6 +772,8 @@ impl eframe::App for RetroRomsApp {
         let mut download_version_to_start = None;
         let mut play_from_detail = None;
         let mut reveal_from_detail = None;
+        let mut image_to_view_from_detail = None;
+
         render_game_detail_window(
             ctx,
             &mut self.selected_game_for_detail,
@@ -752,7 +783,12 @@ impl eframe::App for RetroRomsApp {
             &mut download_version_to_start,
             &mut play_from_detail,
             &mut reveal_from_detail,
+            &mut image_to_view_from_detail,
         );
+
+        if let Some((title, url)) = image_to_view_from_detail {
+            self.image_viewer_state = Some(ImageViewerState::new(title, url));
+        }
 
         if let Some((game, ver)) = download_version_to_start {
             let ver_name = ver.name.clone();
@@ -766,6 +802,31 @@ impl eframe::App for RetroRomsApp {
         if let Some(path) = reveal_from_detail {
             let _ = reveal_in_file_explorer(Path::new(&path));
         }
+
+        // ROM Versions Modal (opened specifically via "⬇ Скачать" button)
+        let mut download_version_from_modal = None;
+        render_rom_versions_modal(
+            ctx,
+            &mut self.selected_game_for_versions,
+            &self.rom_versions,
+            self.is_loading_versions,
+            self.theme,
+            &mut download_version_from_modal,
+        );
+
+        if let Some((game, ver)) = download_version_from_modal {
+            let ver_name = ver.name.clone();
+            self.start_game_download(game, Some(ver));
+            self.selected_game_for_versions = None;
+            self.set_status(format!("Начата загрузка версии: {}", ver_name));
+        }
+
+        // Image Viewer Modal (opened via clicking game cover / screenshots)
+        render_image_viewer_modal(
+            ctx,
+            &mut self.image_viewer_state,
+            self.theme,
+        );
 
         let mut zip_selection_confirmed = None;
         render_zip_modal(
@@ -883,6 +944,7 @@ impl eframe::App for RetroRomsApp {
                         let mut favorite_toggle = None;
                         let mut play_clicked = None;
                         let mut page_changed = None;
+                        let mut image_to_view = None;
 
                         // Filter and sort displayed games
                         let mut displayed: Vec<GameCard> = self.catalog_games.clone();
@@ -913,6 +975,7 @@ impl eframe::App for RetroRomsApp {
                                     &mut favorite_toggle,
                                     &mut play_clicked,
                                     &mut page_changed,
+                                    &mut image_to_view,
                                 );
                             }
                             ViewMode::Table => {
@@ -927,6 +990,7 @@ impl eframe::App for RetroRomsApp {
                                     &mut favorite_toggle,
                                     &mut play_clicked,
                                     &mut page_changed,
+                                    &mut image_to_view,
                                 );
                             }
                         }
@@ -939,7 +1003,10 @@ impl eframe::App for RetroRomsApp {
                             self.open_game_detail(&game);
                         }
                         if let Some(game) = game_to_download {
-                            self.open_game_detail(&game);
+                            self.open_rom_versions_modal(&game);
+                        }
+                        if let Some((title, url)) = image_to_view {
+                            self.image_viewer_state = Some(ImageViewerState::new(title, url));
                         }
                         if let Some((game, new_fav)) = favorite_toggle {
                             let _ = self.db.set_game_favorite(&game, new_fav);
@@ -993,6 +1060,7 @@ impl eframe::App for RetroRomsApp {
                         let mut game_to_download = None;
                         let mut favorite_toggle = None;
                         let mut play_clicked = None;
+                        let mut image_to_view = None;
 
                         render_favorites_view(
                             ui,
@@ -1003,13 +1071,17 @@ impl eframe::App for RetroRomsApp {
                             &mut game_to_download,
                             &mut favorite_toggle,
                             &mut play_clicked,
+                            &mut image_to_view,
                         );
 
                         if let Some(game) = game_to_open {
                             self.open_game_detail(&game);
                         }
                         if let Some(game) = game_to_download {
-                            self.open_game_detail(&game);
+                            self.open_rom_versions_modal(&game);
+                        }
+                        if let Some((title, url)) = image_to_view {
+                            self.image_viewer_state = Some(ImageViewerState::new(title, url));
                         }
                         if let Some((game, new_fav)) = favorite_toggle {
                             let _ = self.db.set_game_favorite(&game, new_fav);

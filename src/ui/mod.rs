@@ -3,6 +3,8 @@ pub mod catalog_table;
 pub mod downloads_view;
 pub mod favorites_view;
 pub mod game_detail;
+pub mod image_viewer_modal;
+pub mod rom_versions_modal;
 pub mod settings_view;
 pub mod sidebar;
 pub mod topbar;
