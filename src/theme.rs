@@ -60,6 +60,10 @@ impl ThemePreset {
         }
     }
 
+    pub fn accent_color(&self) -> Color32 {
+        self.secondary_color()
+    }
+
     pub fn bg_color(&self) -> Color32 {
         match self {
             ThemePreset::ArcadeNeon => Color32::from_rgb(14, 15, 24),
