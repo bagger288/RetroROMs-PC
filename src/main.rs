@@ -1081,7 +1081,7 @@ impl eframe::App for RetroRomsApp {
                     .into_iter()
                     .map(|(slug, (name, count))| (slug, name, count))
                     .collect();
-                search_platforms.sort_by(|a, b| b.2.cmp(&a.2));
+                search_platforms.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.1.cmp(&b.1)));
 
                 render_topbar(
                     ui,

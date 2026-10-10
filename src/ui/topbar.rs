@@ -105,6 +105,15 @@ pub fn render_topbar(
         // Line 2: Either Global Search Results & Platform Filter Chips, or Normal Console Categories
         if is_search_mode {
             ui.horizontal(|ui| {
+                // Reserve reset button on the far right first so ScrollArea doesn't push it or fight for width
+                let reset_clicked = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.button("Сбросить поиск").clicked()
+                }).inner;
+                if reset_clicked {
+                    search_query.clear();
+                    *on_clear_search = true;
+                }
+
                 if is_searching {
                     ui.label(
                         RichText::new("⏳ Поиск по всей библиотеке Emu-Land.net…")
@@ -121,7 +130,7 @@ pub fn render_topbar(
 
                 ui.add_space(8.0);
 
-                // Platform filter chips
+                // Platform filter chips scroll area fills the space in-between
                 if search_results_count > 0 && !search_platforms.is_empty() {
                     ScrollArea::horizontal()
                         .id_salt("search_platforms_scroll")
@@ -157,13 +166,6 @@ pub fn render_topbar(
                             });
                         });
                 }
-
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Сбросить поиск").clicked() {
-                        search_query.clear();
-                        *on_clear_search = true;
-                    }
-                });
             });
         } else if !categories.is_empty() {
             ScrollArea::horizontal()

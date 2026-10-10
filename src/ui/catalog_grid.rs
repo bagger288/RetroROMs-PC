@@ -24,28 +24,33 @@ pub fn render_catalog_grid(
         return;
     }
 
+    // Get the true bounded available width from the parent CentralPanel
+    let screen_w = ui.ctx().screen_rect().width();
+    let cursor_x = ui.cursor().left();
+    let scrollbar_reserve = 28.0;
+    // Bounded by physical window right edge to never overflow the screen
+    let max_allowed = (screen_w - cursor_x - scrollbar_reserve).max(200.0);
+    let available_width = (ui.available_width() - scrollbar_reserve)
+        .min(max_allowed)
+        .max(200.0);
+
+    let spacing = 12.0;
+    let min_card_width = 190.0;
+
+    // Compute columns dynamically based on true available space
+    let cols = (((available_width + spacing) / (min_card_width + spacing))
+        .floor()
+        .max(1.0)) as usize;
+
+    // Distribute exact width to cards without forcing .max(min_card_width) which could overflow
+    let total_spacing = (cols as f32 - 1.0) * spacing;
+    let card_width = ((available_width - total_spacing) / cols as f32).floor();
+    let card_height = 290.0;
+
     ScrollArea::vertical()
         .id_salt("catalog_grid_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            // Reserve padding for vertical scrollbar and panel margins
-            let scrollbar_reserve = 16.0;
-            let available_width = (ui.available_width() - scrollbar_reserve).max(200.0);
-            let spacing = 12.0;
-            let min_card_width = 180.0;
-
-            // Compute columns dynamically based on actual available width
-            let cols = (((available_width + spacing) / (min_card_width + spacing))
-                .floor()
-                .max(1.0)) as usize;
-
-            // Divide remaining width evenly among columns so cards fill available width without overflowing
-            let total_spacing = (cols as f32 - 1.0) * spacing;
-            let card_width = ((available_width - total_spacing) / cols as f32)
-                .max(min_card_width)
-                .floor();
-            let card_height = 290.0;
-
             let mut row_idx = 0;
             while row_idx < games.len() {
                 ui.horizontal(|ui| {
@@ -194,38 +199,57 @@ fn render_game_card(
                 ui.add_space(4.0);
 
                 // Platform & Year
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(&game.console_name)
-                            .size(10.0)
-                            .color(theme.primary_color()),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(
-                            RichText::new(&game.year)
-                                .size(10.0)
-                                .color(Color32::from_white_alpha(120)),
+                ui.allocate_ui_with_layout(
+                    Vec2::new(inner_width, 16.0),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.set_min_size(Vec2::new(inner_width, 16.0));
+                        ui.set_max_size(Vec2::new(inner_width, 16.0));
+
+                        let year_w = 40.0;
+                        let plat_w = (inner_width - year_w - 4.0).max(40.0);
+                        ui.add_sized(
+                            [plat_w, 16.0],
+                            egui::Label::new(
+                                RichText::new(&game.console_name)
+                                    .size(10.0)
+                                    .color(theme.primary_color()),
+                            ).truncate(),
                         );
-                    });
-                });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(&game.year)
+                                    .size(10.0)
+                                    .color(Color32::from_white_alpha(120)),
+                            );
+                        });
+                    },
+                );
 
                 ui.add_space(2.0);
 
                 // Rating & File size
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!("★ {:.1}", game.rating))
-                            .size(11.0)
-                            .color(Color32::from_rgb(255, 204, 0)),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(inner_width, 16.0),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.set_min_size(Vec2::new(inner_width, 16.0));
+                        ui.set_max_size(Vec2::new(inner_width, 16.0));
+
                         ui.label(
-                            RichText::new(&game.file_size)
-                                .size(10.0)
-                                .color(Color32::from_white_alpha(140)),
+                            RichText::new(format!("★ {:.1}", game.rating))
+                                .size(11.0)
+                                .color(Color32::from_rgb(255, 204, 0)),
                         );
-                    });
-                });
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(&game.file_size)
+                                    .size(10.0)
+                                    .color(Color32::from_white_alpha(140)),
+                            );
+                        });
+                    },
+                );
             });
 
             // Make clicking the info section open game details
