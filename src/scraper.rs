@@ -34,15 +34,16 @@ pub fn normalize_image_url(src: &str) -> Option<String> {
     if clean.is_empty() || !is_valid_cover_image(clean) {
         return None;
     }
-    if clean.starts_with("//") {
-        Some(format!("https:{}", clean))
+    let url = if clean.starts_with("//") {
+        format!("https:{}", clean)
     } else if clean.starts_with('/') {
-        Some(format!("{}{}", BASE_URL, clean))
+        format!("{}{}", BASE_URL, clean)
     } else if clean.starts_with("http://") || clean.starts_with("https://") {
-        Some(clean.to_string())
+        clean.to_string()
     } else {
-        Some(format!("{}/{}", BASE_URL, clean))
-    }
+        format!("{}/{}", BASE_URL, clean)
+    };
+    Some(url.replace(' ', "%20"))
 }
 
 #[derive(Clone)]
@@ -472,6 +473,152 @@ impl EmuLandClient {
             game.screenshot_urls = screens;
         }
 
+        // Also extract mfile_id if not present
+        if game.mfile_id.is_none() {
+            let re_mfile = Regex::new(r"act=(?:getmfl|getfile)&(?:amp;)?id=([0-9]+)|mgame\(['\"][^'\"]*id=([0-9]+)|id=[\"']mfile_([0-9]+)[\"']|id=[\"']text_([0-9]+)[\"']|id=[\"']pict_([0-9]+)[\"']").unwrap();
+            if let Some(caps) = re_mfile.captures(&html) {
+                for i in 1..=5 {
+                    if let Some(m) = caps.get(i) {
+                        game.mfile_id = Some(m.as_str().to_string());
+                        break;
+                    }
+                }
+            }
+        }
+
         Ok(())
+    }
+
+    /// Global site-wide search across ALL platforms and consoles from Emu-Land.net
+    pub async fn search_games_site_wide(
+        &self,
+        query: &str,
+    ) -> Result<Vec<GameCard>, Box<dyn std::error::Error + Send + Sync>> {
+        let clean = query.trim();
+        if clean.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let url = format!("{}/search_games", BASE_URL);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("q", clean), ("id", "all")])
+            .header("Referer", BASE_URL)
+            .send()
+            .await?;
+
+        let html = resp.text().await?;
+        let doc = Html::parse_document(&html);
+
+        let p_sel = Selector::parse("p").unwrap();
+        let a_sel = Selector::parse("a").unwrap();
+        let img_sel = Selector::parse("img").unwrap();
+        let small_sel = Selector::parse("small.muted-text").unwrap();
+
+        let default_consoles = crate::models::get_default_consoles();
+        let mut results = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
+
+        for p in doc.select(&p_sel) {
+            let link = match p.select(&a_sel).find(|a| {
+                if let Some(href) = a.value().attr("href") {
+                    href.contains("/roms/") || href.contains("/games/") || href.contains("/iso/")
+                } else {
+                    false
+                }
+            }) {
+                Some(l) => l,
+                None => continue,
+            };
+
+            let href = match link.value().attr("href") {
+                Some(h) => h.trim(),
+                None => continue,
+            };
+
+            let title = link.text().collect::<Vec<_>>().join("").trim().to_string();
+            if title.is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = href.trim_matches('/').split('/').collect();
+            if parts.len() < 4 {
+                continue;
+            }
+
+            let section = parts[0];
+            let console_slug = parts[1].to_lowercase();
+            let sub_folder = parts[2];
+            let game_page_slug = parts[3];
+
+            let cover_url = p
+                .select(&img_sel)
+                .filter_map(|img| img.value().attr("src"))
+                .find_map(normalize_image_url);
+
+            let mut genre = "Retro Game".to_string();
+            for sm in p.select(&small_sel) {
+                let txt = sm
+                    .text()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .trim()
+                    .trim_start_matches('|')
+                    .trim()
+                    .to_string();
+                if !txt.is_empty()
+                    && !txt.to_lowercase().contains("игрок")
+                    && !txt.to_lowercase().contains("player")
+                {
+                    genre = txt;
+                    break;
+                }
+            }
+
+            let console_name = default_consoles
+                .iter()
+                .find(|c| c.slug == console_slug)
+                .map(|c| c.name.clone())
+                .unwrap_or_else(|| console_slug.to_uppercase());
+
+            let id = format!("{}_{}", console_slug, game_page_slug);
+            if seen_ids.contains(&id) {
+                continue;
+            }
+            seen_ids.insert(id.clone());
+
+            let download_url = format!(
+                "{}/{}/{}/{}/{}",
+                BASE_URL, section, console_slug, sub_folder, game_page_slug
+            );
+
+            results.push(GameCard {
+                id,
+                console_slug,
+                console_name,
+                section: section.to_string(),
+                title,
+                original_title: None,
+                genre,
+                year: "N/A".to_string(),
+                publisher: "Unknown".to_string(),
+                developer: "Unknown".to_string(),
+                rating: 4.8,
+                file_size: "ROM".to_string(),
+                cover_url,
+                screenshot_urls: Vec::new(),
+                description: String::new(),
+                download_url,
+                mfile_id: None,
+                game_page_slug: Some(game_page_slug.to_string()),
+                regions: vec!["USA".to_string()],
+                is_favorite: false,
+                is_downloaded: false,
+                local_file_path: None,
+            });
+        }
+
+        Ok(results)
     }
 }

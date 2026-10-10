@@ -79,6 +79,14 @@ pub struct RetroRomsApp {
 
     // Search
     search_query: String,
+    search_results: Vec<GameCard>,
+    is_searching: bool,
+    last_executed_search: String,
+    search_platform_filter: Option<String>,
+    search_tx: tokio::sync::mpsc::UnboundedSender<(String, Result<Vec<GameCard>, String>)>,
+    search_rx: UnboundedReceiver<(String, Result<Vec<GameCard>, String>)>,
+    last_query_typed_at: Option<std::time::Instant>,
+    last_query_seen: String,
 
     // Favorites
     favorite_games: Vec<GameCard>,
@@ -115,6 +123,7 @@ impl RetroRomsApp {
 
         let consoles = db.get_consoles().unwrap_or_else(|_| retroms_desktop::models::get_default_consoles());
         let (tx, rx) = unbounded_channel();
+        let (search_tx, search_rx) = unbounded_channel();
         let download_manager = DownloadManager::new(tx);
         let scraper = EmuLandClient::new();
 
@@ -145,6 +154,14 @@ impl RetroRomsApp {
             is_loading_games: false,
             status_message: "Готово к работе".to_string(),
             search_query: String::new(),
+            search_results: Vec::new(),
+            is_searching: false,
+            last_executed_search: String::new(),
+            search_platform_filter: None,
+            search_tx,
+            search_rx,
+            last_query_typed_at: None,
+            last_query_seen: String::new(),
             favorite_games: Vec::new(),
             download_manager,
             download_rx: rx,
@@ -283,6 +300,9 @@ impl RetroRomsApp {
         for g in &mut self.catalog_games {
             update_card(g);
         }
+        for g in &mut self.search_results {
+            update_card(g);
+        }
         for g in &mut self.favorite_games {
             update_card(g);
         }
@@ -299,6 +319,32 @@ impl RetroRomsApp {
         self.trigger_load_games_sync();
     }
 
+    pub fn execute_site_search(&mut self, query: &str) {
+        let clean = query.trim().to_string();
+        if clean.is_empty() {
+            self.search_results.clear();
+            self.is_searching = false;
+            self.search_platform_filter = None;
+            self.last_executed_search.clear();
+            self.set_status("Поиск очищен");
+            return;
+        }
+
+        self.last_executed_search = clean.clone();
+        self.is_searching = true;
+        self.search_platform_filter = None;
+        self.set_status(format!("Поиск на Emu-Land.net по запросу «{}»...", clean));
+
+        let scraper = self.scraper.clone();
+        let tx = self.search_tx.clone();
+        let q = clean.clone();
+
+        tokio::spawn(async move {
+            let res = scraper.search_games_site_wide(&q).await.map_err(|e| e.to_string());
+            let _ = tx.send((q, res));
+        });
+    }
+
     pub fn open_game_detail(&mut self, game: &GameCard) {
         let mut full_game = game.clone();
         self.is_loading_versions = true;
@@ -311,32 +357,36 @@ impl RetroRomsApp {
         let mfile_id_opt = full_game.mfile_id.clone();
         let game_for_details = full_game.clone();
 
-        let (versions_res, details_res) = tokio::task::block_in_place(|| {
+        let (details_res, versions_res) = tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current().block_on(async {
-                let v_fut = async {
-                    if let Some(mid) = &mfile_id_opt {
-                        scraper.fetch_rom_versions(&section, &slug, mid).await
-                    } else {
-                        Ok(Vec::new())
-                    }
+                let mut gm = game_for_details;
+                let d_res = scraper.fetch_game_page_details(&mut gm).await;
+                let mid = gm.mfile_id.clone().or(mfile_id_opt);
+                let v_res = if let Some(m) = &mid {
+                    scraper.fetch_rom_versions(&section, &slug, m).await
+                } else {
+                    Ok(Vec::new())
                 };
-                let d_fut = async {
-                    let mut gm = game_for_details;
-                    let res = scraper.fetch_game_page_details(&mut gm).await;
-                    (res, gm)
-                };
-                tokio::join!(v_fut, d_fut)
+                ((d_res, gm), v_res)
             })
         });
 
         self.is_loading_versions = false;
         if let (Ok(_), updated_game) = details_res {
             full_game = updated_game;
-            // Also keep description & cover cached in catalog games list
+            // Also keep description & cover cached in catalog games list or search results
             if let Some(cg) = self.catalog_games.iter_mut().find(|cg| cg.id == full_game.id) {
                 cg.description = full_game.description.clone();
+                cg.mfile_id = full_game.mfile_id.clone();
                 if cg.cover_url.is_none() && full_game.cover_url.is_some() {
                     cg.cover_url = full_game.cover_url.clone();
+                }
+            }
+            if let Some(sg) = self.search_results.iter_mut().find(|sg| sg.id == full_game.id) {
+                sg.description = full_game.description.clone();
+                sg.mfile_id = full_game.mfile_id.clone();
+                if sg.cover_url.is_none() && full_game.cover_url.is_some() {
+                    sg.cover_url = full_game.cover_url.clone();
                 }
             }
         }
@@ -355,19 +405,45 @@ impl RetroRomsApp {
         let scraper = self.scraper.clone();
         let section = game.section.clone();
         let slug = game.console_slug.clone();
-        let mfile_id_opt = game.mfile_id.clone();
+        let mut mfile_id_opt = game.mfile_id.clone();
+        let mut gm = game.clone();
 
-        if let Some(mid) = &mfile_id_opt {
-            let versions_res = tokio::task::block_in_place(|| {
-                tokio::runtime::Handle::current().block_on(async {
+        let versions_res = tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                if mfile_id_opt.is_none() {
+                    let _ = scraper.fetch_game_page_details(&mut gm).await;
+                    mfile_id_opt = gm.mfile_id.clone();
+                }
+
+                if let Some(mid) = &mfile_id_opt {
                     scraper.fetch_rom_versions(&section, &slug, mid).await
-                })
-            });
-            if let Ok(versions) = versions_res {
-                self.rom_versions = versions;
-            }
-        }
+                } else {
+                    Ok(Vec::new())
+                }
+            })
+        });
+
         self.is_loading_versions = false;
+        if let Ok(mut versions) = versions_res {
+            if versions.is_empty() {
+                let subpath = retroms_desktop::scraper::get_game_subpath(&slug);
+                let ext = if subpath == "iso" { "7z" } else { "zip" };
+                let fallback_dl = if let Some(mid) = &mfile_id_opt {
+                    format!("{}/{}/{}/{}?act=getmfl&id={}", retroms_desktop::scraper::BASE_URL, section, slug, subpath, mid)
+                } else {
+                    game.download_url.clone()
+                };
+                versions.push(RomFileVersion {
+                    fid: mfile_id_opt.unwrap_or_else(|| "default".to_string()),
+                    name: if game.title.ends_with(ext) { game.title.clone() } else { format!("{}.{}", game.title, ext) },
+                    size: game.file_size.clone(),
+                    category: "Основные".to_string(),
+                    download_url: fallback_dl,
+                    region_or_type: "USA".to_string(),
+                });
+            }
+            self.rom_versions = versions;
+        }
     }
 
     pub fn trigger_load_rom_versions(&mut self, game: &GameCard) {
@@ -765,6 +841,59 @@ impl eframe::App for RetroRomsApp {
             }
         }
 
+        // Process search results from background task
+        while let Ok((query, res)) = self.search_rx.try_recv() {
+            if query == self.search_query.trim() {
+                self.is_searching = false;
+                match res {
+                    Ok(mut games) => {
+                        let fav_ids: std::collections::HashSet<String> = self.favorite_games.iter().map(|g| g.id.clone()).collect();
+                        for g in &mut games {
+                            if fav_ids.contains(&g.id) {
+                                g.is_favorite = true;
+                            }
+                        }
+                        self.search_results = games.clone();
+                        self.sync_download_status();
+                        let _ = self.db.save_games(&games);
+                        self.set_status(format!("Найдено {} игр по запросу «{}»", games.len(), query));
+                    }
+                    Err(e) => {
+                        // Offline / error fallback: search local SQLite DB
+                        if let Ok(mut local_games) = self.db.search_games(&query) {
+                            let fav_ids: std::collections::HashSet<String> = self.favorite_games.iter().map(|g| g.id.clone()).collect();
+                            for g in &mut local_games {
+                                if fav_ids.contains(&g.id) {
+                                    g.is_favorite = true;
+                                }
+                            }
+                            self.search_results = local_games;
+                            self.sync_download_status();
+                            self.set_status(format!("Офлайн-поиск: найдено {} игр (сеть: {})", self.search_results.len(), e));
+                        } else {
+                            self.set_status(format!("Ошибка поиска на Emu-Land: {}", e));
+                        }
+                    }
+                }
+            }
+        }
+
+        // Automatic typing debounce trigger
+        let current_trimmed_query = self.search_query.trim().to_string();
+        if current_trimmed_query != self.last_query_seen {
+            self.last_query_seen = current_trimmed_query.clone();
+            self.last_query_typed_at = Some(std::time::Instant::now());
+        }
+
+        if let Some(typed_at) = self.last_query_typed_at {
+            if typed_at.elapsed() >= std::time::Duration::from_millis(450) {
+                self.last_query_typed_at = None;
+                if current_trimmed_query != self.last_executed_search {
+                    self.execute_site_search(&current_trimmed_query);
+                }
+            }
+        }
+
         // Apply visual theme
         self.theme.apply_to_ctx(ctx);
 
@@ -851,26 +980,63 @@ impl eframe::App for RetroRomsApp {
             .show(ctx, |ui| {
                 let mut category_changed = false;
                 let mut refresh_clicked = false;
+                let mut search_triggered = false;
+                let mut clear_search = false;
+
+                // Group search results by console slug to form platform filter chips
+                let mut platform_counts: HashMap<String, (String, usize)> = HashMap::new();
+                for g in &self.search_results {
+                    let entry = platform_counts.entry(g.console_slug.clone()).or_insert_with(|| {
+                        let short = g.console_name.split('/').next().unwrap_or(&g.console_name).trim().to_string();
+                        (short, 0)
+                    });
+                    entry.1 += 1;
+                }
+                let mut search_platforms: Vec<(String, String, usize)> = platform_counts
+                    .into_iter()
+                    .map(|(slug, (name, count))| (slug, name, count))
+                    .collect();
+                search_platforms.sort_by(|a, b| b.2.cmp(&a.2));
 
                 render_topbar(
                     ui,
                     &mut self.search_query,
+                    self.is_searching,
+                    self.search_results.len(),
+                    &search_platforms,
+                    &mut self.search_platform_filter,
                     &self.categories,
                     &mut self.selected_category,
                     &mut self.view_mode,
                     &mut self.sort_option,
                     self.is_loading_games,
                     self.theme,
+                    &mut search_triggered,
+                    &mut clear_search,
                     &mut category_changed,
                     &mut refresh_clicked,
                 );
 
+                if search_triggered {
+                    self.last_query_typed_at = None;
+                    let q = self.search_query.clone();
+                    self.execute_site_search(&q);
+                }
+                if clear_search {
+                    self.last_query_typed_at = None;
+                    self.execute_site_search("");
+                }
                 if category_changed {
                     self.current_page = 1;
                     self.trigger_load_games_sync();
                 }
                 if refresh_clicked {
-                    self.trigger_load_games_sync();
+                    if !self.search_query.trim().is_empty() {
+                        let q = self.search_query.clone();
+                        self.execute_site_search(&q);
+                    } else {
+                        self.trigger_load_games_sync();
+                    }
                 }
             });
 
@@ -946,13 +1112,18 @@ impl eframe::App for RetroRomsApp {
                         let mut page_changed = None;
                         let mut image_to_view = None;
 
-                        // Filter and sort displayed games
-                        let mut displayed: Vec<GameCard> = self.catalog_games.clone();
+                        let is_search_mode = !self.search_query.trim().is_empty();
 
-                        if !self.search_query.trim().is_empty() {
-                            let q = self.search_query.to_lowercase();
-                            displayed.retain(|g| g.title.to_lowercase().contains(&q));
-                        }
+                        // Filter and sort displayed games
+                        let mut displayed: Vec<GameCard> = if is_search_mode {
+                            let mut res = self.search_results.clone();
+                            if let Some(ref slug_filter) = self.search_platform_filter {
+                                res.retain(|g| g.console_slug.eq_ignore_ascii_case(slug_filter));
+                            }
+                            res
+                        } else {
+                            self.catalog_games.clone()
+                        };
 
                         // Apply sort
                         match self.sort_option {
@@ -962,42 +1133,88 @@ impl eframe::App for RetroRomsApp {
                             SortOption::Default => {}
                         }
 
-                        match self.view_mode {
-                            ViewMode::Grid => {
-                                render_catalog_grid(
-                                    ui,
-                                    &displayed,
-                                    self.current_page,
-                                    self.total_pages,
-                                    self.theme,
-                                    &mut game_to_open,
-                                    &mut game_to_download,
-                                    &mut favorite_toggle,
-                                    &mut play_clicked,
-                                    &mut page_changed,
-                                    &mut image_to_view,
-                                );
-                            }
-                            ViewMode::Table => {
-                                render_catalog_table(
-                                    ui,
-                                    &displayed,
-                                    self.current_page,
-                                    self.total_pages,
-                                    self.theme,
-                                    &mut game_to_open,
-                                    &mut game_to_download,
-                                    &mut favorite_toggle,
-                                    &mut play_clicked,
-                                    &mut page_changed,
-                                    &mut image_to_view,
-                                );
+                        if is_search_mode && displayed.is_empty() {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(50.0);
+                                if self.is_searching {
+                                    ui.spinner();
+                                    ui.add_space(14.0);
+                                    ui.label(
+                                        RichText::new("Поиск по всей библиотеке Emu-Land.net…")
+                                            .size(16.0)
+                                            .color(self.theme.accent_color())
+                                            .strong(),
+                                    );
+                                } else {
+                                    ui.label(RichText::new("🔍").size(48.0));
+                                    ui.add_space(10.0);
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Ничего не найдено по запросу «{}»",
+                                            self.search_query.trim()
+                                        ))
+                                        .size(16.0)
+                                        .color(self.theme.text_color())
+                                        .strong(),
+                                    );
+                                    ui.add_space(6.0);
+                                    ui.label(
+                                        RichText::new(
+                                            "Попробуйте ввести название на английском (например: Mario, Sonic, Mortal Kombat, Zelda, Contra).",
+                                        )
+                                        .size(13.0)
+                                        .color(egui::Color32::from_rgb(140, 150, 175)),
+                                    );
+                                    ui.add_space(16.0);
+                                    if ui.button("Очистить поиск").clicked() {
+                                        self.search_query.clear();
+                                        self.execute_site_search("");
+                                    }
+                                }
+                            });
+                        } else {
+                            let cur_page = if is_search_mode { 1 } else { self.current_page };
+                            let tot_pages = if is_search_mode { 1 } else { self.total_pages };
+
+                            match self.view_mode {
+                                ViewMode::Grid => {
+                                    render_catalog_grid(
+                                        ui,
+                                        &displayed,
+                                        cur_page,
+                                        tot_pages,
+                                        self.theme,
+                                        &mut game_to_open,
+                                        &mut game_to_download,
+                                        &mut favorite_toggle,
+                                        &mut play_clicked,
+                                        &mut page_changed,
+                                        &mut image_to_view,
+                                    );
+                                }
+                                ViewMode::Table => {
+                                    render_catalog_table(
+                                        ui,
+                                        &displayed,
+                                        cur_page,
+                                        tot_pages,
+                                        self.theme,
+                                        &mut game_to_open,
+                                        &mut game_to_download,
+                                        &mut favorite_toggle,
+                                        &mut play_clicked,
+                                        &mut page_changed,
+                                        &mut image_to_view,
+                                    );
+                                }
                             }
                         }
 
                         if let Some(p) = page_changed {
-                            self.current_page = p;
-                            self.trigger_load_games_sync();
+                            if !is_search_mode {
+                                self.current_page = p;
+                                self.trigger_load_games_sync();
+                            }
                         }
                         if let Some(game) = game_to_open {
                             self.open_game_detail(&game);
@@ -1013,6 +1230,9 @@ impl eframe::App for RetroRomsApp {
                             self.reload_favorites();
                             // Update local copy
                             if let Some(g) = self.catalog_games.iter_mut().find(|g| g.id == game.id) {
+                                g.is_favorite = new_fav;
+                            }
+                            if let Some(g) = self.search_results.iter_mut().find(|g| g.id == game.id) {
                                 g.is_favorite = new_fav;
                             }
                         }

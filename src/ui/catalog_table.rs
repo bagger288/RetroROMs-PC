@@ -164,32 +164,34 @@ pub fn render_catalog_table(
                     }
                 });
 
-            // Pagination Controls (always in view, never overflow right)
-            ui.add_space(16.0);
-            ui.separator();
-            ui.add_space(8.0);
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("Страница {} из {}", current_page, total_pages)).strong());
-                ui.add_space(20.0);
-
-                let prev_enabled = current_page > 1;
-                if ui
-                    .add_enabled(prev_enabled, egui::Button::new("◀ Назад"))
-                    .clicked()
-                {
-                    *on_page_changed = Some(current_page - 1);
-                }
-
+            // Pagination Controls (only shown if multiple pages)
+            if total_pages > 1 {
+                ui.add_space(16.0);
+                ui.separator();
                 ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("Страница {} из {}", current_page, total_pages)).strong());
+                    ui.add_space(20.0);
 
-                let next_enabled = current_page < total_pages;
-                if ui
-                    .add_enabled(next_enabled, egui::Button::new("Вперёд ▶"))
-                    .clicked()
-                {
-                    *on_page_changed = Some(current_page + 1);
-                }
-            });
-            ui.add_space(24.0);
+                    let prev_enabled = current_page > 1;
+                    if ui
+                        .add_enabled(prev_enabled, egui::Button::new("◀ Назад"))
+                        .clicked()
+                    {
+                        *on_page_changed = Some(current_page - 1);
+                    }
+
+                    ui.add_space(8.0);
+
+                    let next_enabled = current_page < total_pages;
+                    if ui
+                        .add_enabled(next_enabled, egui::Button::new("Вперёд ▶"))
+                        .clicked()
+                    {
+                        *on_page_changed = Some(current_page + 1);
+                    }
+                });
+                ui.add_space(24.0);
+            }
         });
 }
