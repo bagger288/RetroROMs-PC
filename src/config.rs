@@ -65,11 +65,12 @@ pub fn get_default_retroarch_cores() -> HashMap<String, String> {
 
 impl Default for AppSettings {
     fn default() -> Self {
-        let default_dir = dirs::download_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("RetroROMs")
-            .to_string_lossy()
-            .to_string();
+        // Default download directory: "ROMs" inside the application directory
+        let app_base_dir = std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        let default_dir = app_base_dir.join("ROMs").to_string_lossy().to_string();
 
         let mut default_emus = HashMap::new();
         default_emus.insert("dendy".to_string(), "mesen".to_string());
@@ -122,6 +123,17 @@ impl AppSettings {
         } else {
             Self::default()
         };
+
+        // If download_directory is empty or points to legacy Downloads/RetroROMs, migrate to app folder/ROMs
+        let legacy_downloads = dirs::download_dir()
+            .map(|p| p.join("RetroROMs").to_string_lossy().to_string())
+            .unwrap_or_default();
+        if settings.download_directory.trim().is_empty()
+            || (!legacy_downloads.is_empty() && settings.download_directory == legacy_downloads)
+        {
+            settings.download_directory = Self::default().download_directory;
+            let _ = settings.save();
+        }
 
         // Guarantee default cores are populated even if older config file was loaded
         if settings.retroarch_cores.is_empty() {
