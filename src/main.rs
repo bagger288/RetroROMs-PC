@@ -110,6 +110,53 @@ pub struct RetroRomsApp {
     scraper: EmuLandClient,
 }
 
+fn strip_rom_tags(stem: &str) -> String {
+    let mut result = String::new();
+    let mut depth_paren = 0;
+    let mut depth_bracket = 0;
+    for c in stem.chars() {
+        match c {
+            '(' => depth_paren += 1,
+            ')' => {
+                if depth_paren > 0 {
+                    depth_paren -= 1;
+                }
+            }
+            '[' => depth_bracket += 1,
+            ']' => {
+                if depth_bracket > 0 {
+                    depth_bracket -= 1;
+                }
+            }
+            _ => {
+                if depth_paren == 0 && depth_bracket == 0 {
+                    result.push(c);
+                }
+            }
+        }
+    }
+    result.trim().to_string()
+}
+
+fn normalize_title_for_rom_match(title: &str) -> String {
+    let t = title.trim();
+    let t = if let Some(stripped) = t.strip_suffix(", The") {
+        format!("The {}", stripped)
+    } else if let Some(stripped) = t.strip_suffix(", the") {
+        format!("The {}", stripped)
+    } else if let Some(stripped) = t.strip_suffix(", A") {
+        format!("A {}", stripped)
+    } else if let Some(stripped) = t.strip_suffix(", An") {
+        format!("An {}", stripped)
+    } else {
+        t.to_string()
+    };
+    t.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect()
+}
+
 impl RetroRomsApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let db = Database::open().expect("Failed to initialize SQLite database");
@@ -185,54 +232,6 @@ impl RetroRomsApp {
         app
     }
 
-fn strip_rom_tags(stem: &str) -> String {
-    let mut result = String::new();
-    let mut depth_paren = 0;
-    let mut depth_bracket = 0;
-    for c in stem.chars() {
-        match c {
-            '(' => depth_paren += 1,
-            ')' => {
-                if depth_paren > 0 {
-                    depth_paren -= 1;
-                }
-            }
-            '[' => depth_bracket += 1,
-            ']' => {
-                if depth_bracket > 0 {
-                    depth_bracket -= 1;
-                }
-            }
-            _ => {
-                if depth_paren == 0 && depth_bracket == 0 {
-                    result.push(c);
-                }
-            }
-        }
-    }
-    result.trim().to_string()
-}
-
-fn normalize_title_for_rom_match(title: &str) -> String {
-    let t = title.trim();
-    let t = if let Some(stripped) = t.strip_suffix(", The") {
-        format!("The {}", stripped)
-    } else if let Some(stripped) = t.strip_suffix(", the") {
-        format!("The {}", stripped)
-    } else if let Some(stripped) = t.strip_suffix(", A") {
-        format!("A {}", stripped)
-    } else if let Some(stripped) = t.strip_suffix(", An") {
-        format!("An {}", stripped)
-    } else {
-        t.to_string()
-    };
-    t.to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect()
-}
-
-impl RetroRomsApp {
     pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_message = msg.into();
     }
