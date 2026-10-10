@@ -154,6 +154,7 @@ impl RetroRomsApp {
         app.reload_favorites();
         app.reload_downloads_history();
         app.trigger_load_games();
+        app.sync_download_status();
 
         app
     }
@@ -166,11 +167,67 @@ impl RetroRomsApp {
         if let Ok(favs) = self.db.get_favorite_games() {
             self.favorite_games = favs;
         }
+        self.sync_download_status();
     }
 
     pub fn reload_downloads_history(&mut self) {
         if let Ok(history) = self.db.get_download_history() {
             self.download_history = history;
+        }
+    }
+
+    pub fn sync_download_status(&mut self) {
+        if let Ok(history) = self.db.get_download_history() {
+            self.download_history = history;
+        }
+
+        // 1. Map of game_id and lowercase title to local_file_path from completed downloads in DB
+        let mut completed_files: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for r in &self.download_history {
+            if r.status == DownloadStatus::Completed {
+                if let Some(path) = &r.local_file_path {
+                    if !path.is_empty() && std::path::Path::new(path).exists() {
+                        completed_files.insert(r.game_id.clone(), path.clone());
+                        completed_files.insert(r.game_title.to_lowercase(), path.clone());
+                    }
+                }
+            }
+        }
+
+        // 2. Also check if the ROM file exists in the console folder on disk
+        let download_dir = std::path::PathBuf::from(&self.settings.download_directory);
+
+        let update_card = |g: &mut GameCard| {
+            if let Some(path) = completed_files.get(&g.id).or_else(|| completed_files.get(&g.title.to_lowercase())) {
+                g.is_downloaded = true;
+                g.local_file_path = Some(path.clone());
+                return;
+            }
+
+            // Check files in the console download directory
+            let console_folder = g.console_name.replace(['/', '\\'], "_");
+            let target_subfolder = download_dir.join(&console_folder);
+            if target_subfolder.exists() {
+                let safe_title = g.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+                for ext in &["zip", "7z", "nes", "sfc", "smc", "bin", "gen", "md", "gba", "gb", "iso"] {
+                    let candidate = target_subfolder.join(format!("{}.{}", safe_title, ext));
+                    if candidate.exists() {
+                        g.is_downloaded = true;
+                        g.local_file_path = Some(candidate.to_string_lossy().to_string());
+                        return;
+                    }
+                }
+            }
+        };
+
+        for g in &mut self.catalog_games {
+            update_card(g);
+        }
+        for g in &mut self.favorite_games {
+            update_card(g);
+        }
+        if let Some(g) = &mut self.selected_game_for_detail {
+            update_card(g);
         }
     }
 
@@ -410,6 +467,7 @@ impl eframe::App for RetroRomsApp {
                     self.download_tokens.remove(&record_id);
                     let _ = self.db.update_download_status(record_id, DownloadStatus::Completed, Some(&local_path), None);
                     self.reload_downloads_history();
+                    self.sync_download_status();
                     self.set_status(message);
                 }
                 DownloadEvent::ZipNeedsSelection { request } => {
@@ -785,6 +843,7 @@ impl RetroRomsApp {
 
                 let count = games.len();
                 self.catalog_games = games;
+                self.sync_download_status();
                 self.set_status(format!("Загружено {} игр ({})", count, console.short_name));
             }
             Err(e) => {

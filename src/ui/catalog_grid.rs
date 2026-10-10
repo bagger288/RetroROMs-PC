@@ -123,43 +123,34 @@ fn render_game_card(
             let img_height = 140.0;
             let img_box_size = Vec2::new(inner_width, img_height);
 
-            // 1. Centered Image Container with guaranteed fixed height and centering
-            ui.allocate_ui_with_layout(
-                img_box_size,
-                egui::Layout::centered_and_justified(egui::Direction::LeftToRight),
-                |ui| {
+            // 1. Centered Image Container with dark background and true centering
+            Frame::none()
+                .fill(Color32::from_rgb(18, 22, 34))
+                .rounding(Rounding::same(6.0))
+                .show(ui, |ui| {
                     ui.set_min_size(img_box_size);
                     ui.set_max_size(img_box_size);
-
-                    let mut image_rendered = false;
-                    if let Some(cover_url) = &game.cover_url {
-                        if !cover_url.is_empty() {
-                            let resp = ui.add(
-                                egui::Image::new(cover_url)
-                                    .max_size(img_box_size)
-                                    .rounding(Rounding::same(6.0)),
-                            );
-                            image_rendered = true;
-                            if resp.clicked() {
-                                *on_game_clicked = Some(game.clone());
+                    ui.centered_and_justified(|ui| {
+                        let mut image_rendered = false;
+                        if let Some(cover_url) = &game.cover_url {
+                            if !cover_url.is_empty() {
+                                let resp = ui.add(
+                                    egui::Image::new(cover_url)
+                                        .max_size(img_box_size)
+                                        .rounding(Rounding::same(6.0)),
+                                );
+                                image_rendered = true;
+                                if resp.clicked() {
+                                    *on_game_clicked = Some(game.clone());
+                                }
                             }
                         }
-                    }
 
-                    if !image_rendered {
-                        Frame::none()
-                            .fill(Color32::from_rgb(20, 24, 36))
-                            .rounding(Rounding::same(6.0))
-                            .show(ui, |ui| {
-                                ui.set_width(inner_width);
-                                ui.set_height(img_height);
-                                ui.centered_and_justified(|ui| {
-                                    ui.label(RichText::new("🎮").size(34.0));
-                                });
-                            });
-                    }
-                },
-            );
+                        if !image_rendered {
+                            ui.label(RichText::new("🎮").size(34.0));
+                        }
+                    });
+                });
 
             ui.add_space(8.0);
 
@@ -210,52 +201,72 @@ fn render_game_card(
 
             ui.add_space(6.0);
 
-            // 5. Action Buttons pinned at bottom
-            ui.horizontal(|ui| {
-                // Favorite Star
-                let fav_text = if game.is_favorite { "★" } else { "☆" };
-                let fav_color = if game.is_favorite {
-                    Color32::from_rgb(255, 215, 0)
-                } else {
-                    Color32::from_white_alpha(160)
-                };
-                if ui
-                    .button(RichText::new(fav_text).color(fav_color))
-                    .on_hover_text("Избранное")
-                    .clicked()
-                {
-                    *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
-                }
+            // 5. Action Buttons centered horizontally across card
+            let btn_row_size = Vec2::new(inner_width, 28.0);
+            ui.allocate_ui_with_layout(
+                btn_row_size,
+                egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Center),
+                |ui| {
+                    ui.set_min_size(btn_row_size);
+                    ui.set_max_size(btn_row_size);
 
-                // If downloaded -> Play button, else -> Download / Versions
-                if game.is_downloaded {
+                    // Favorite Star
+                    let fav_text = if game.is_favorite { "★" } else { "☆" };
+                    let fav_color = if game.is_favorite {
+                        Color32::from_rgb(255, 215, 0)
+                    } else {
+                        Color32::from_white_alpha(160)
+                    };
                     if ui
-                        .button(RichText::new("▶ Играть").color(Color32::from_rgb(0, 230, 118)).strong())
-                        .on_hover_text("Запустить в эмуляторе")
+                        .add_sized([30.0, 26.0], egui::Button::new(RichText::new(fav_text).color(fav_color).size(13.0)))
+                        .on_hover_text("Избранное")
                         .clicked()
                     {
-                        *on_play_clicked = Some(game.clone());
+                        *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
                     }
-                } else {
-                    let dl_btn = ui.button(
-                        RichText::new("⬇ Скачать")
-                            .color(theme.primary_color())
-                            .size(11.0),
-                    );
-                    if dl_btn.clicked() {
-                        *on_download_clicked = Some(game.clone());
-                    }
-                }
 
-                // Details Button
-                if ui
-                    .button(RichText::new("ℹ").size(11.0))
-                    .on_hover_text("Подробнее об игре")
-                    .clicked()
-                {
-                    *on_game_clicked = Some(game.clone());
-                }
-            });
+                    // Main Action: Download or Play (symmetrically centered)
+                    let main_btn_width = (inner_width - 76.0).max(75.0);
+                    if game.is_downloaded {
+                        if ui
+                            .add_sized(
+                                [main_btn_width, 26.0],
+                                egui::Button::new(
+                                    RichText::new("▶ Играть")
+                                        .color(Color32::from_rgb(0, 230, 118))
+                                        .strong()
+                                        .size(11.0),
+                                ),
+                            )
+                            .on_hover_text("Запустить в эмуляторе")
+                            .clicked()
+                        {
+                            *on_play_clicked = Some(game.clone());
+                        }
+                    } else {
+                        let dl_btn = ui.add_sized(
+                            [main_btn_width, 26.0],
+                            egui::Button::new(
+                                RichText::new("⬇ Скачать")
+                                    .color(theme.primary_color())
+                                    .size(11.0),
+                            ),
+                        );
+                        if dl_btn.clicked() {
+                            *on_download_clicked = Some(game.clone());
+                        }
+                    }
+
+                    // Details Button
+                    if ui
+                        .add_sized([30.0, 26.0], egui::Button::new(RichText::new("ℹ").size(12.0)))
+                        .on_hover_text("Подробнее об игре")
+                        .clicked()
+                    {
+                        *on_game_clicked = Some(game.clone());
+                    }
+                },
+            );
         });
     });
 }
