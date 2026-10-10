@@ -18,13 +18,16 @@ pub fn render_rom_versions_modal(
     let mut is_open = true;
     let mut close_requested = false;
 
+    // Constrain window size with strict max_width so it can NEVER auto-expand across the screen
     Window::new(format!("💾 Выбор версии ROM: {}", g.title))
         .open(&mut is_open)
         .resizable(true)
         .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-        .default_size([720.0, 520.0])
+        .default_size([700.0, 500.0])
         .min_width(540.0)
-        .min_height(380.0)
+        .max_width(740.0)
+        .min_height(360.0)
+        .max_height(600.0)
         .show(ctx, |ui| {
             ui.vertical(|ui| {
                 // 1. Header info
@@ -112,34 +115,28 @@ pub fn render_rom_versions_modal(
                         }
                         ui.add_space(20.0);
                     });
-                // 4. Versions list (clean full-width cards, scrollbar anchored to window edge)
+                // 4. Versions list
                 } else {
                     ScrollArea::vertical()
                         .id_salt("rom_versions_modal_scroll")
                         .auto_shrink([false, false])
-                        .max_height(380.0)
+                        .max_height(360.0)
                         .show(ui, |ui| {
-                            let available_w = (ui.available_width() - 14.0).max(360.0);
-                            let dl_btn_w = 105.0;
+                            let dl_btn_w = 100.0;
+                            let badge_w = 54.0;
 
                             for ver in rom_versions {
                                 let card_frame = Frame::none()
                                     .fill(theme.card_bg_color())
                                     .rounding(Rounding::same(6.0))
                                     .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.2)))
-                                    .inner_margin(egui::Margin {
-                                        left: 10.0,
-                                        right: 10.0,
-                                        top: 8.0,
-                                        bottom: 8.0,
-                                    });
+                                    .inner_margin(egui::Margin::symmetric(10.0, 7.0));
 
                                 card_frame.show(ui, |ui| {
-                                    ui.set_width(available_w);
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 10.0;
 
-                                        // Region Badge Pill (Fixed 54px width, distinct colors)
+                                        // Region Badge Pill (Fixed width, distinct colors)
                                         let (badge_bg, badge_fg) = match ver.region_or_type.as_str() {
                                             "RUS" => (Color32::from_rgb(0, 100, 160), Color32::from_rgb(180, 235, 255)),
                                             "USA" => (Color32::from_rgb(30, 120, 60), Color32::from_rgb(200, 255, 210)),
@@ -156,7 +153,7 @@ pub fn render_rom_versions_modal(
                                             .inner_margin(egui::Margin::symmetric(6.0, 3.0))
                                             .show(ui, |ui| {
                                                 ui.add_sized(
-                                                    [52.0, 16.0],
+                                                    [badge_w, 16.0],
                                                     egui::Label::new(
                                                         RichText::new(&ver.region_or_type)
                                                             .color(badge_fg)
@@ -166,14 +163,14 @@ pub fn render_rom_versions_modal(
                                                 );
                                             });
 
-                                        // Text info (Filename + Category/Size)
-                                        let text_width = (available_w - 52.0 - dl_btn_w - 44.0).max(120.0);
+                                        // Middle section: Filename + Category/Size
+                                        let middle_w = (ui.available_width() - dl_btn_w - 20.0).max(180.0);
                                         ui.allocate_ui_with_layout(
-                                            Vec2::new(text_width, 36.0),
+                                            Vec2::new(middle_w, 34.0),
                                             egui::Layout::top_down(egui::Align::Min),
                                             |ui| {
                                                 let fn_label = ui.add_sized(
-                                                    [text_width, 18.0],
+                                                    [middle_w, 18.0],
                                                     egui::Label::new(
                                                         RichText::new(&ver.name)
                                                             .size(12.5)
@@ -203,7 +200,7 @@ pub fn render_rom_versions_modal(
                                             },
                                         );
 
-                                        // Download button (docked to right edge, perfectly aligned across all rows)
+                                        // Download button docked to right edge
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                             let dl_btn = ui.add_sized(
                                                 [dl_btn_w, 28.0],

@@ -26,7 +26,9 @@ pub fn render_game_detail_window(
         .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
         .default_size([720.0, 600.0])
         .min_width(500.0)
+        .max_width(760.0)
         .min_height(400.0)
+        .max_height(720.0)
         .show(ctx, |ui| {
             ScrollArea::vertical()
                 .id_salt("game_detail_scroll")
@@ -188,23 +190,17 @@ pub fn render_game_detail_window(
                             }
                         });
                     } else {
-                        let available_w = (ui.available_width() - 8.0).max(360.0);
-                        let dl_btn_w = 105.0;
+                        let dl_btn_w = 100.0;
+                        let badge_w = 54.0;
 
                         for ver in rom_versions {
                             let card_frame = Frame::none()
                                 .fill(theme.card_bg_color())
                                 .rounding(Rounding::same(6.0))
                                 .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.2)))
-                                .inner_margin(egui::Margin {
-                                    left: 10.0,
-                                    right: 10.0,
-                                    top: 8.0,
-                                    bottom: 8.0,
-                                });
+                                .inner_margin(egui::Margin::symmetric(10.0, 7.0));
 
                             card_frame.show(ui, |ui| {
-                                ui.set_width(available_w);
                                 ui.horizontal(|ui| {
                                     ui.spacing_mut().item_spacing.x = 10.0;
 
@@ -224,7 +220,7 @@ pub fn render_game_detail_window(
                                         .inner_margin(egui::Margin::symmetric(6.0, 3.0))
                                         .show(ui, |ui| {
                                             ui.add_sized(
-                                                [52.0, 16.0],
+                                                [badge_w, 16.0],
                                                 egui::Label::new(
                                                     RichText::new(&ver.region_or_type)
                                                         .color(badge_fg)
@@ -234,9 +230,9 @@ pub fn render_game_detail_window(
                                             );
                                         });
 
-                                    let text_width = (available_w - 52.0 - dl_btn_w - 44.0).max(120.0);
+                                    let text_width = (ui.available_width() - dl_btn_w - 20.0).max(180.0);
                                     ui.allocate_ui_with_layout(
-                                        Vec2::new(text_width, 36.0),
+                                        Vec2::new(text_width, 34.0),
                                         egui::Layout::top_down(egui::Align::Min),
                                         |ui| {
                                             let fn_label = ui.add_sized(
