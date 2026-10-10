@@ -410,29 +410,126 @@ impl RetroRomsApp {
         self.set_status("Загрузка отменена");
     }
 
+    pub fn locate_rom_file(&self, game: &GameCard) -> Option<PathBuf> {
+        // 1. Check if game already has local_file_path and it actually exists on disk
+        if let Some(p) = &game.local_file_path {
+            let path = PathBuf::from(p);
+            if path.exists() {
+                return Some(path);
+            }
+        }
+
+        // 2. Check download history in SQLite for this game
+        for r in &self.download_history {
+            if r.status == DownloadStatus::Completed
+                && (r.game_id == game.id || r.game_title.eq_ignore_ascii_case(&game.title))
+            {
+                if let Some(p) = &r.local_path {
+                    let path = PathBuf::from(p);
+                    if path.exists() {
+                        return Some(path);
+                    }
+                }
+            }
+        }
+
+        // 3. Search in the user's CURRENT configured download directory
+        let download_dir = PathBuf::from(&self.settings.download_directory);
+        let console_folder = self
+            .consoles
+            .iter()
+            .find(|c| c.slug == game.console_slug)
+            .map(|c| c.folder_name.clone())
+            .unwrap_or_else(|| "ROMs".to_string());
+
+        let candidate_dirs = [
+            download_dir.join(&console_folder),
+            download_dir.join(&game.console_name),
+            download_dir.clone(),
+        ];
+
+        let safe_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
+        let safe_title_trimmed = safe_title.trim_end_matches('.').to_string();
+        let safe_title_lower = safe_title_trimmed.to_lowercase();
+
+        let extensions = [
+            "nes", "zip", "7z", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc",
+            "n64", "z64", "v64", "nds", "pce", "iso", "cue", "chd", "rom",
+        ];
+
+        for dir in &candidate_dirs {
+            if !dir.exists() {
+                continue;
+            }
+
+            for ext in &extensions {
+                let p1 = dir.join(format!("{}.{}", safe_title, ext));
+                if p1.exists() {
+                    return Some(p1);
+                }
+                let p2 = dir.join(format!("{}.{}", safe_title_trimmed, ext));
+                if p2.exists() {
+                    return Some(p2);
+                }
+            }
+
+            // Fuzzy prefix match (e.g. "Super Mario Bros. (World).nes")
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let entry_path = entry.path();
+                    if entry_path.is_file() {
+                        if let Some(file_name) = entry_path.file_name().and_then(|n| n.to_str()) {
+                            let file_lower = file_name.to_lowercase();
+                            if file_lower.starts_with(&safe_title_lower) {
+                                return Some(entry_path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
     pub fn play_game(&mut self, game: &GameCard) {
-        let local_path = match &game.local_file_path {
-            Some(p) => PathBuf::from(p),
+        println!("--------------------------------------------------");
+        println!("[PLAY] Запрос на запуск игры: '{}' (консоль: {})", game.title, game.console_slug);
+
+        let local_path = match self.locate_rom_file(game) {
+            Some(p) => {
+                println!("[PLAY] Найден ROM файл на диске: {}", p.display());
+                p
+            }
             None => {
-                // Look in history or default console folder
-                let folder = self.settings.get_console_folder(
-                    &self.consoles.iter().find(|c| c.slug == game.console_slug)
-                        .map(|c| c.folder_name.as_str()).unwrap_or("ROMs")
+                let download_dir = Path::new(&self.settings.download_directory);
+                let console_folder = self
+                    .consoles
+                    .iter()
+                    .find(|c| c.slug == game.console_slug)
+                    .map(|c| c.folder_name.as_str())
+                    .unwrap_or("ROMs");
+                let expected_dir = download_dir.join(console_folder);
+
+                let err_msg = format!(
+                    "Файл игры '{}' не найден в папке: {}. Убедитесь, что игра скачана.",
+                    game.title, expected_dir.display()
                 );
-                folder.join(format!("{}.rom", game.title))
+                println!("[PLAY ОШИБКА] {}", err_msg);
+                println!("[PLAY] Текущая папка загрузок в настройках: {}", download_dir.display());
+                self.set_status(err_msg);
+                return;
             }
         };
 
-        println!("[PLAY] Запуск игры: '{}' (платформа: {})", game.title, game.console_slug);
-        println!("[PLAY] Файл: {}", local_path.display());
-        println!("[PLAY] Режим RetroArch: {}, путь: '{}'", self.settings.use_retroarch, self.settings.retroarch_path);
-
-        if !local_path.exists() {
-            let msg = format!("Файл игры не найден по пути: {}", local_path.display());
-            println!("[PLAY ОШИБКА] {}", msg);
-            self.set_status(msg);
-            return;
+        // Cache the found path on the card
+        if let Some(cg) = self.catalog_games.iter_mut().find(|cg| cg.id == game.id) {
+            cg.local_file_path = Some(local_path.to_string_lossy().to_string());
+            cg.is_downloaded = true;
         }
+
+        println!("[PLAY] Итоговый путь к файлу: {}", local_path.display());
+        println!("[PLAY] Режим RetroArch: {}, путь: {}", self.settings.use_retroarch, self.settings.retroarch_path);
 
         let emulator = self.settings.emulator_paths.get(&game.console_slug).cloned().unwrap_or_default();
         let args = self.settings.emulator_args.get(&game.console_slug).cloned().unwrap_or_default();

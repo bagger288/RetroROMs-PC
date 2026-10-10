@@ -28,13 +28,17 @@ pub fn render_settings_view(
                 ui.label(RichText::new("📁 ПАПКА СОХРАНЕНИЯ ROMs").strong());
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.add(
+                    if ui.add(
                         egui::TextEdit::singleline(&mut settings.download_directory)
                             .desired_width(450.0),
-                    );
+                    ).changed() {
+                        let _ = settings.save();
+                    }
                     if ui.button("Обзор...").clicked() {
                         if let Some(folder) = pick_download_folder() {
                             settings.download_directory = folder.to_string_lossy().to_string();
+                            let _ = settings.save();
+                            println!("[SETTINGS] Папка сохранения ROMs обновлена: {}", settings.download_directory);
                         }
                     }
                 });
@@ -51,14 +55,18 @@ pub fn render_settings_view(
             ui.group(|ui| {
                 ui.label(RichText::new("📦 РАСПАКОВКА АРХИВОВ (SMART UNPACK)").strong());
                 ui.add_space(4.0);
-                ui.checkbox(
+                if ui.checkbox(
                     &mut settings.auto_unpack_zip,
                     "Автоматически распаковывать однофайловые ZIP-архивы",
-                );
-                ui.checkbox(
+                ).changed() {
+                    let _ = settings.save();
+                }
+                if ui.checkbox(
                     &mut settings.delete_zip_after_unpack,
                     "Удалять исходный .zip файл после успешного извлечения РОМа",
-                );
+                ).changed() {
+                    let _ = settings.save();
+                }
                 ui.label(
                     RichText::new("Многофайловые архивы (GoodSet, сборники переводов) всегда открывают диалог выбора файлов")
                         .weak()
@@ -101,10 +109,13 @@ pub fn render_settings_view(
                 });
                 ui.add_space(4.0);
 
-                ui.checkbox(
+                if ui.checkbox(
                     &mut settings.use_retroarch,
                     RichText::new("Использовать RetroArch для запуска всех игр (единый эмулятор)").strong(),
-                );
+                ).changed() {
+                    let _ = settings.save();
+                    println!("[SETTINGS] Режим RetroArch: {}", settings.use_retroarch);
+                }
                 ui.label(
                     RichText::new("Позволяет запускать игры любых платформ через один эмулятор с автозагрузкой ядер libretro.")
                         .weak()
@@ -114,25 +125,31 @@ pub fn render_settings_view(
 
                 ui.label(RichText::new("Путь к исполняемому файлу RetroArch (retroarch.exe):").size(12.0));
                 ui.horizontal(|ui| {
-                    ui.add(
+                    if ui.add(
                         egui::TextEdit::singleline(&mut settings.retroarch_path)
                             .desired_width(450.0)
                             .hint_text("C:\\RetroArch-Win64\\retroarch.exe"),
-                    );
+                    ).changed() {
+                        let _ = settings.save();
+                    }
                     if ui.button("Обзор...").clicked() {
                         if let Some(exe_file) = pick_executable_file("Выберите исполняемый файл RetroArch") {
                             settings.retroarch_path = exe_file.to_string_lossy().to_string();
+                            let _ = settings.save();
+                            println!("[SETTINGS] Путь к RetroArch установлен: {}", settings.retroarch_path);
                         }
                     }
                 });
 
                 ui.add_space(4.0);
                 ui.label(RichText::new("Дополнительные параметры запуска RetroArch:").size(12.0));
-                ui.add(
+                if ui.add(
                     egui::TextEdit::singleline(&mut settings.retroarch_args)
                         .desired_width(450.0)
                         .hint_text("-f (для полноэкранного режима)"),
-                );
+                ).changed() {
+                    let _ = settings.save();
+                }
 
                 ui.add_space(6.0);
                 ui.collapsing("⚙ Настройка ядер libretro для всех систем (Cores)", |ui| {
@@ -282,6 +299,21 @@ pub fn render_settings_view(
                 }
             });
 
+            ui.add_space(16.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .button(
+                        RichText::new("💾 Сохранить все настройки")
+                            .color(theme.primary_color())
+                            .strong()
+                            .size(13.0),
+                    )
+                    .clicked()
+                {
+                    let _ = settings.save();
+                    println!("[SETTINGS] Настройки сохранены вручную: папка='{}', RetroArch={}", settings.download_directory, settings.use_retroarch);
+                }
+            });
             ui.add_space(20.0);
         });
 }
