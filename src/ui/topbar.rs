@@ -105,15 +105,9 @@ pub fn render_topbar(
         // Line 2: Either Global Search Results & Platform Filter Chips, or Normal Console Categories
         if is_search_mode {
             ui.horizontal(|ui| {
-                // Reserve reset button on the far right first so ScrollArea doesn't push it or fight for width
-                let reset_clicked = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.button("Сбросить поиск").clicked()
-                }).inner;
-                if reset_clicked {
-                    search_query.clear();
-                    *on_clear_search = true;
-                }
+                ui.spacing_mut().item_spacing.x = 8.0;
 
+                // 1. Status / count label
                 if is_searching {
                     ui.label(
                         RichText::new("⏳ Поиск по всей библиотеке Emu-Land.net…")
@@ -128,43 +122,57 @@ pub fn render_topbar(
                     );
                 }
 
-                ui.add_space(8.0);
+                // 2. Reserve width for reset button, give middle space to scroll area
+                let reset_btn_w = 120.0;
+                let scroll_w = (ui.available_width() - reset_btn_w - 12.0).max(60.0);
 
-                // Platform filter chips scroll area fills the space in-between
                 if search_results_count > 0 && !search_platforms.is_empty() {
-                    ScrollArea::horizontal()
-                        .id_salt("search_platforms_scroll")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let all_selected = search_platform_filter.is_none();
-                                let mut all_text = RichText::new(format!("Все платформы ({})", search_results_count));
-                                if all_selected {
-                                    all_text = all_text.color(theme.primary_color()).strong();
-                                }
-                                if ui.selectable_label(all_selected, all_text).clicked() {
-                                    *search_platform_filter = None;
-                                }
-
-                                for (slug, display_name, count) in search_platforms {
-                                    let is_selected = search_platform_filter
-                                        .as_ref()
-                                        .map(|s| s == slug)
-                                        .unwrap_or(false);
-                                    let mut chip_text = RichText::new(format!("{} ({})", display_name, count));
-                                    if is_selected {
-                                        chip_text = chip_text.color(theme.primary_color()).strong();
-                                    }
-                                    if ui.selectable_label(is_selected, chip_text).clicked() {
-                                        if is_selected {
-                                            *search_platform_filter = None;
-                                        } else {
-                                            *search_platform_filter = Some(slug.clone());
+                    ui.allocate_ui_with_layout(
+                        egui::Vec2::new(scroll_w, 24.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            ScrollArea::horizontal()
+                                .id_salt("search_platforms_scroll")
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 6.0;
+                                        let all_selected = search_platform_filter.is_none();
+                                        let mut all_text = RichText::new(format!("Все платформы ({})", search_results_count));
+                                        if all_selected {
+                                            all_text = all_text.color(theme.primary_color()).strong();
                                         }
-                                    }
-                                }
-                            });
-                        });
+                                        if ui.selectable_label(all_selected, all_text).clicked() {
+                                            *search_platform_filter = None;
+                                        }
+
+                                        for (slug, display_name, count) in search_platforms {
+                                            let is_selected = search_platform_filter
+                                                .as_ref()
+                                                .map(|s| s == slug)
+                                                .unwrap_or(false);
+                                            let mut chip_text = RichText::new(format!("{} ({})", display_name, count));
+                                            if is_selected {
+                                                chip_text = chip_text.color(theme.primary_color()).strong();
+                                            }
+                                            if ui.selectable_label(is_selected, chip_text).clicked() {
+                                                if is_selected {
+                                                    *search_platform_filter = None;
+                                                } else {
+                                                    *search_platform_filter = Some(slug.clone());
+                                                }
+                                            }
+                                        }
+                                    });
+                                });
+                        },
+                    );
+                }
+
+                // 3. Reset button on the right
+                if ui.button("Сбросить поиск").clicked() {
+                    search_query.clear();
+                    *on_clear_search = true;
                 }
             });
         } else if !categories.is_empty() {

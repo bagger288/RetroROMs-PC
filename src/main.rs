@@ -21,7 +21,7 @@ use retroms_desktop::ui::sidebar::render_sidebar;
 use retroms_desktop::ui::topbar::render_topbar;
 use retroms_desktop::ui::zip_modal::render_zip_modal;
 use retroms_desktop::ui::{NavTab, SortOption, ViewMode};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -1068,8 +1068,8 @@ impl eframe::App for RetroRomsApp {
                 let mut search_triggered = false;
                 let mut clear_search = false;
 
-                // Group search results by console slug to form platform filter chips
-                let mut platform_counts: HashMap<String, (String, usize)> = HashMap::new();
+                // Group search results by console slug to form platform filter chips deterministically
+                let mut platform_counts: BTreeMap<String, (String, usize)> = BTreeMap::new();
                 for g in &self.search_results {
                     let entry = platform_counts.entry(g.console_slug.clone()).or_insert_with(|| {
                         let short = g.console_name.split('/').next().unwrap_or(&g.console_name).trim().to_string();
@@ -1081,7 +1081,11 @@ impl eframe::App for RetroRomsApp {
                     .into_iter()
                     .map(|(slug, (name, count))| (slug, name, count))
                     .collect();
-                search_platforms.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.1.cmp(&b.1)));
+                search_platforms.sort_by(|a, b| {
+                    b.2.cmp(&a.2)
+                        .then_with(|| a.1.cmp(&b.1))
+                        .then_with(|| a.0.cmp(&b.0))
+                });
 
                 render_topbar(
                     ui,

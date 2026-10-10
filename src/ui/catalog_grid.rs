@@ -24,33 +24,25 @@ pub fn render_catalog_grid(
         return;
     }
 
-    // Get the true bounded available width from the parent CentralPanel
-    let screen_w = ui.ctx().screen_rect().width();
-    let cursor_x = ui.cursor().left();
-    let scrollbar_reserve = 28.0;
-    // Bounded by physical window right edge to never overflow the screen
-    let max_allowed = (screen_w - cursor_x - scrollbar_reserve).max(200.0);
-    let available_width = (ui.available_width() - scrollbar_reserve)
-        .min(max_allowed)
-        .max(200.0);
-
-    let spacing = 12.0;
-    let min_card_width = 190.0;
-
-    // Compute columns dynamically based on true available space
-    let cols = (((available_width + spacing) / (min_card_width + spacing))
-        .floor()
-        .max(1.0)) as usize;
-
-    // Distribute exact width to cards without forcing .max(min_card_width) which could overflow
-    let total_spacing = (cols as f32 - 1.0) * spacing;
-    let card_width = ((available_width - total_spacing) / cols as f32).floor();
-    let card_height = 290.0;
-
     ScrollArea::vertical()
         .id_salt("catalog_grid_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
+            let spacing = 12.0;
+            let min_card_width = 185.0;
+            let scrollbar_reserve = 18.0;
+            let available_width = (ui.available_width() - scrollbar_reserve).max(min_card_width);
+
+            // Compute columns dynamically based on true available space
+            let cols = (((available_width + spacing) / (min_card_width + spacing))
+                .floor()
+                .max(1.0)) as usize;
+
+            // Distribute exact width to cards
+            let total_spacing = (cols as f32 - 1.0) * spacing;
+            let card_width = ((available_width - total_spacing) / cols as f32).floor();
+            let card_height = 290.0;
+
             let mut row_idx = 0;
             while row_idx < games.len() {
                 ui.horizontal(|ui| {
@@ -59,17 +51,25 @@ pub fn render_catalog_grid(
                         let idx = row_idx + col;
                         if idx < games.len() {
                             let game = &games[idx];
-                            render_game_card(
-                                ui,
-                                game,
-                                card_width,
-                                card_height,
-                                theme,
-                                on_game_clicked,
-                                on_download_clicked,
-                                on_favorite_toggled,
-                                on_play_clicked,
-                                on_view_image,
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(card_width, card_height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    ui.set_width(card_width);
+                                    ui.set_height(card_height);
+                                    render_game_card(
+                                        ui,
+                                        game,
+                                        card_width,
+                                        card_height,
+                                        theme,
+                                        on_game_clicked,
+                                        on_download_clicked,
+                                        on_favorite_toggled,
+                                        on_play_clicked,
+                                        on_view_image,
+                                    );
+                                },
                             );
                         }
                     }
@@ -122,14 +122,16 @@ fn render_game_card(
     on_play_clicked: &mut Option<GameCard>,
     on_view_image: &mut Option<(String, String)>,
 ) {
-    let margin = 8.0;
-    let inner_width = (width - margin * 2.0).max(100.0);
-    let inner_height = (height - margin * 2.0).max(100.0);
+    let margin = 6.0;
+    let stroke_width = 1.0;
+    // Inner dimensions strictly account for margins and strokes on both sides
+    let inner_width = (width - (margin + stroke_width) * 2.0).max(80.0);
+    let inner_height = (height - (margin + stroke_width) * 2.0).max(80.0);
 
     let frame = Frame::none()
         .fill(theme.card_bg_color())
         .rounding(Rounding::same(8.0))
-        .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.3)))
+        .stroke(Stroke::new(stroke_width, theme.primary_color().gamma_multiply(0.3)))
         .inner_margin(margin);
 
     frame.show(ui, |ui| {
@@ -185,7 +187,7 @@ fn render_game_card(
                 }
             }
 
-            ui.add_space(8.0);
+            ui.add_space(6.0);
 
             // 2. Clickable info section (Title, console, rating, size) opens game details
             let info_block_resp = ui.vertical(|ui| {
@@ -194,62 +196,60 @@ fn render_game_card(
                     .color(theme.text_color())
                     .strong()
                     .size(13.0);
-                ui.add(egui::Label::new(title_text).truncate());
+                ui.add_sized(
+                    [inner_width, 18.0],
+                    egui::Label::new(title_text).truncate(),
+                );
 
                 ui.add_space(4.0);
 
                 // Platform & Year
-                ui.allocate_ui_with_layout(
-                    Vec2::new(inner_width, 16.0),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        ui.set_min_size(Vec2::new(inner_width, 16.0));
-                        ui.set_max_size(Vec2::new(inner_width, 16.0));
-
-                        let year_w = 40.0;
-                        let plat_w = (inner_width - year_w - 4.0).max(40.0);
-                        ui.add_sized(
-                            [plat_w, 16.0],
-                            egui::Label::new(
-                                RichText::new(&game.console_name)
-                                    .size(10.0)
-                                    .color(theme.primary_color()),
-                            ).truncate(),
-                        );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(&game.year)
-                                    .size(10.0)
-                                    .color(Color32::from_white_alpha(120)),
-                            );
-                        });
-                    },
-                );
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let year_w = 38.0;
+                    let plat_w = (inner_width - year_w - 4.0).max(30.0);
+                    ui.add_sized(
+                        [plat_w, 16.0],
+                        egui::Label::new(
+                            RichText::new(&game.console_name)
+                                .size(10.0)
+                                .color(theme.primary_color()),
+                        ).truncate(),
+                    );
+                    ui.add_sized(
+                        [year_w, 16.0],
+                        egui::Label::new(
+                            RichText::new(&game.year)
+                                .size(10.0)
+                                .color(Color32::from_white_alpha(120)),
+                        ),
+                    );
+                });
 
                 ui.add_space(2.0);
 
                 // Rating & File size
-                ui.allocate_ui_with_layout(
-                    Vec2::new(inner_width, 16.0),
-                    egui::Layout::left_to_right(egui::Align::Center),
-                    |ui| {
-                        ui.set_min_size(Vec2::new(inner_width, 16.0));
-                        ui.set_max_size(Vec2::new(inner_width, 16.0));
-
-                        ui.label(
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    let size_w = 56.0;
+                    let rating_w = (inner_width - size_w - 4.0).max(30.0);
+                    ui.add_sized(
+                        [rating_w, 16.0],
+                        egui::Label::new(
                             RichText::new(format!("★ {:.1}", game.rating))
                                 .size(11.0)
                                 .color(Color32::from_rgb(255, 204, 0)),
-                        );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(
-                                RichText::new(&game.file_size)
-                                    .size(10.0)
-                                    .color(Color32::from_white_alpha(140)),
-                            );
-                        });
-                    },
-                );
+                        ),
+                    );
+                    ui.add_sized(
+                        [size_w, 16.0],
+                        egui::Label::new(
+                            RichText::new(&game.file_size)
+                                .size(10.0)
+                                .color(Color32::from_white_alpha(140)),
+                        ),
+                    );
+                });
             });
 
             // Make clicking the info section open game details
@@ -268,63 +268,58 @@ fn render_game_card(
             ui.add_space(6.0);
 
             // 5. Action Buttons (Favorite + Download/Play)
-            let btn_row_size = Vec2::new(inner_width, 28.0);
-            ui.allocate_ui_with_layout(
-                btn_row_size,
-                egui::Layout::left_to_right(egui::Align::Center).with_main_align(egui::Align::Center),
-                |ui| {
-                    ui.set_min_size(btn_row_size);
-                    ui.set_max_size(btn_row_size);
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
 
-                    // Favorite Star
-                    let fav_text = if game.is_favorite { "★" } else { "☆" };
-                    let fav_color = if game.is_favorite {
-                        Color32::from_rgb(255, 215, 0)
-                    } else {
-                        Color32::from_white_alpha(160)
-                    };
+                // Favorite Star
+                let fav_text = if game.is_favorite { "★" } else { "☆" };
+                let fav_color = if game.is_favorite {
+                    Color32::from_rgb(255, 215, 0)
+                } else {
+                    Color32::from_white_alpha(160)
+                };
+                let fav_btn_w = 28.0;
+                if ui
+                    .add_sized([fav_btn_w, 26.0], egui::Button::new(RichText::new(fav_text).color(fav_color).size(13.0)))
+                    .on_hover_text("Избранное")
+                    .clicked()
+                {
+                    *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
+                }
+
+                // Main Action: Download (opens ROM versions list) or Play
+                let main_btn_width = (inner_width - fav_btn_w - 4.0).max(40.0);
+                if game.is_downloaded {
                     if ui
-                        .add_sized([32.0, 26.0], egui::Button::new(RichText::new(fav_text).color(fav_color).size(13.0)))
-                        .on_hover_text("Избранное")
-                        .clicked()
-                    {
-                        *on_favorite_toggled = Some((game.clone(), !game.is_favorite));
-                    }
-
-                    // Main Action: Download (opens ROM versions list) or Play
-                    let main_btn_width = (inner_width - 38.0).max(50.0);
-                    if game.is_downloaded {
-                        if ui
-                            .add_sized(
-                                [main_btn_width, 26.0],
-                                egui::Button::new(
-                                    RichText::new("▶ Играть")
-                                        .color(Color32::from_rgb(0, 230, 118))
-                                        .strong()
-                                        .size(11.0),
-                                ),
-                            )
-                            .on_hover_text("Запустить в эмуляторе")
-                            .clicked()
-                        {
-                            *on_play_clicked = Some(game.clone());
-                        }
-                    } else {
-                        let dl_btn = ui.add_sized(
+                        .add_sized(
                             [main_btn_width, 26.0],
                             egui::Button::new(
-                                RichText::new("⬇ Скачать")
-                                    .color(theme.primary_color())
+                                RichText::new("▶ Играть")
+                                    .color(Color32::from_rgb(0, 230, 118))
                                     .strong()
                                     .size(11.0),
                             ),
-                        );
-                        if dl_btn.on_hover_text("Выбрать версию ROM для скачивания").clicked() {
-                            *on_download_clicked = Some(game.clone());
-                        }
+                        )
+                        .on_hover_text("Запустить в эмуляторе")
+                        .clicked()
+                    {
+                        *on_play_clicked = Some(game.clone());
                     }
-                },
-            );
+                } else {
+                    let dl_btn = ui.add_sized(
+                        [main_btn_width, 26.0],
+                        egui::Button::new(
+                            RichText::new("⬇ Скачать")
+                                .color(theme.primary_color())
+                                .strong()
+                                .size(11.0),
+                        ),
+                    );
+                    if dl_btn.on_hover_text("Выбрать версию ROM для скачивания").clicked() {
+                        *on_download_clicked = Some(game.clone());
+                    }
+                }
+            });
         });
     });
 }
