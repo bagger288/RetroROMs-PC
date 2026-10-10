@@ -127,7 +127,7 @@ fn render_game_card(
             let img_box_size = Vec2::new(inner_width, img_height);
 
             // 1. Centered Image Container with dark background
-            Frame::none()
+            let img_frame_resp = Frame::none()
                 .fill(Color32::from_rgb(18, 22, 34))
                 .rounding(Rounding::same(6.0))
                 .show(ui, |ui| {
@@ -137,19 +137,12 @@ fn render_game_card(
                         let mut image_rendered = false;
                         if let Some(cover_url) = &game.cover_url {
                             if !cover_url.is_empty() {
-                                let resp = ui.add(
+                                ui.add(
                                     egui::Image::new(cover_url)
                                         .max_size(img_box_size)
-                                        .rounding(Rounding::same(6.0))
-                                        .sense(egui::Sense::click()),
+                                        .rounding(Rounding::same(6.0)),
                                 );
                                 image_rendered = true;
-                                if resp
-                                    .on_hover_text("🔍 Нажмите, чтобы рассмотреть обложку (скроллинг для зума)")
-                                    .clicked()
-                                {
-                                    *on_view_image = Some((format!("Обложка: {}", game.title), cover_url.clone()));
-                                }
                             }
                         }
 
@@ -158,6 +151,25 @@ fn render_game_card(
                         }
                     });
                 });
+
+            let cover_resp = ui.interact(
+                img_frame_resp.response.rect,
+                ui.id().with("cover_click").with(&game.id),
+                egui::Sense::click(),
+            );
+            if cover_resp.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if cover_resp
+                .on_hover_text("🔍 Нажмите, чтобы рассмотреть обложку (скроллинг для зума)")
+                .clicked()
+            {
+                if let Some(cover_url) = &game.cover_url {
+                    if !cover_url.is_empty() {
+                        *on_view_image = Some((format!("Обложка: {}", game.title), cover_url.clone()));
+                    }
+                }
+            }
 
             ui.add_space(8.0);
 

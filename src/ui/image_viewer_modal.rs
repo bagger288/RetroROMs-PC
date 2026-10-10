@@ -37,8 +37,7 @@ pub fn render_image_viewer_modal(
     Window::new(format!("🖼 {}", viewer.title))
         .open(&mut is_open)
         .resizable(true)
-        .pivot(Align2::CENTER_CENTER)
-        .default_pos(ctx.screen_rect().center())
+        .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
         .default_size([700.0, 700.0])
         .min_width(450.0)
         .min_height(450.0)
@@ -91,11 +90,11 @@ pub fn render_image_viewer_modal(
                 let (canvas_rect, response) =
                     ui.allocate_exact_size(canvas_size, Sense::click_and_drag());
 
-                // 1. Mouse wheel zoom
+                // 1. Smooth mouse wheel zoom (proportional to scroll delta)
                 let scroll_delta = ui.input(|i| i.smooth_scroll_delta.y);
                 if response.hovered() && scroll_delta.abs() > 0.01 {
-                    let zoom_step = if scroll_delta > 0.0 { 1.15 } else { 0.87 };
-                    viewer.zoom = (viewer.zoom * zoom_step).clamp(0.2, 10.0);
+                    let zoom_factor = (scroll_delta * 0.003).exp();
+                    viewer.zoom = (viewer.zoom * zoom_factor).clamp(0.2, 10.0);
                 }
 
                 // 2. Mouse drag panning
