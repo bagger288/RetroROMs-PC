@@ -46,6 +46,26 @@ pub fn normalize_image_url(src: &str) -> Option<String> {
     Some(url.replace(' ', "%20"))
 }
 
+pub fn extract_mfile_id_from_html(html: &str) -> Option<String> {
+    let patterns = [
+        r#"act=(?:getmfl|getfile)&(?:amp;)?id=([0-9]+)"#,
+        r#"mgame\(['"][^'"]*id=([0-9]+)"#,
+        r#"id=["']mfile_([0-9]+)["']"#,
+        r#"id=["']text_([0-9]+)["']"#,
+        r#"id=["']pict_([0-9]+)["']"#,
+    ];
+    for pat in patterns {
+        if let Ok(re) = Regex::new(pat) {
+            if let Some(caps) = re.captures(html) {
+                if let Some(m) = caps.get(1) {
+                    return Some(m.as_str().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 #[derive(Clone)]
 pub struct EmuLandClient {
     client: reqwest::Client,
@@ -475,15 +495,7 @@ impl EmuLandClient {
 
         // Also extract mfile_id if not present
         if game.mfile_id.is_none() {
-            let re_mfile = Regex::new(r"act=(?:getmfl|getfile)&(?:amp;)?id=([0-9]+)|mgame\(['\"][^'\"]*id=([0-9]+)|id=[\"']mfile_([0-9]+)[\"']|id=[\"']text_([0-9]+)[\"']|id=[\"']pict_([0-9]+)[\"']").unwrap();
-            if let Some(caps) = re_mfile.captures(&html) {
-                for i in 1..=5 {
-                    if let Some(m) = caps.get(i) {
-                        game.mfile_id = Some(m.as_str().to_string());
-                        break;
-                    }
-                }
-            }
+            game.mfile_id = extract_mfile_id_from_html(&html);
         }
 
         Ok(())
