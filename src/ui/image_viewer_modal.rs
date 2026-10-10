@@ -1,6 +1,6 @@
 use crate::theme::ThemePreset;
 use egui::{
-    Align2, Color32, CursorIcon, Rect, RichText, Rounding, Sense, Stroke, UiBuilder, Vec2, Window,
+    Align2, Color32, CursorIcon, Rect, RichText, Rounding, Sense, Stroke, Vec2, Window,
 };
 
 #[derive(Clone, Debug)]
@@ -129,26 +129,18 @@ pub fn render_image_viewer_modal(
                     Stroke::new(1.0_f32, Color32::from_rgb(38, 44, 62)),
                 );
 
-                // 5. Draw image clipped inside canvas
+                // 5. Draw image clipped inside canvas without altering window layout size
                 let clip_rect = canvas_rect.shrink(2.0);
-                ui.allocate_new_ui(UiBuilder::new().max_rect(clip_rect), |ui| {
-                    ui.set_clip_rect(clip_rect);
+                ui.set_clip_rect(clip_rect);
 
-                    let center = clip_rect.center() + viewer.pan_offset;
-                    let base_side = (clip_rect.width().min(clip_rect.height()) * 0.90).max(120.0);
-                    let img_box_size = Vec2::new(base_side * viewer.zoom, base_side * viewer.zoom);
-                    let img_rect = Rect::from_center_size(center, img_box_size);
+                let center = clip_rect.center() + viewer.pan_offset;
+                let base_side = (clip_rect.width().min(clip_rect.height()) * 0.90).max(120.0);
+                let img_box_size = Vec2::new(base_side * viewer.zoom, base_side * viewer.zoom);
+                let img_rect = Rect::from_center_size(center, img_box_size);
 
-                    ui.allocate_new_ui(UiBuilder::new().max_rect(img_rect), |ui| {
-                        ui.centered_and_justified(|ui| {
-                            ui.add(
-                                egui::Image::new(&viewer.image_url)
-                                    .max_size(img_box_size)
-                                    .rounding(Rounding::same(6.0)),
-                            );
-                        });
-                    });
-                });
+                egui::Image::new(&viewer.image_url)
+                    .rounding(Rounding::same(6.0))
+                    .paint_at(ui, img_rect);
             });
         });
 

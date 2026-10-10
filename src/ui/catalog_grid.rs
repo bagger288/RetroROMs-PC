@@ -117,7 +117,7 @@ fn render_game_card(
         .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.3)))
         .inner_margin(8.0);
 
-    let frame_response = frame.show(ui, |ui| {
+    frame.show(ui, |ui| {
         ui.set_width(width);
         ui.set_height(height);
 
@@ -173,55 +173,68 @@ fn render_game_card(
 
             ui.add_space(8.0);
 
-            // 2. Title with truncate
-            let title_text = RichText::new(&game.title)
-                .color(theme.text_color())
-                .strong()
-                .size(13.0);
-            let title_resp = ui.add(egui::Label::new(title_text).truncate().sense(egui::Sense::click()));
-            if title_resp.on_hover_text("📖 Нажмите, чтобы открыть информацию об игре").clicked() {
+            // 2. Clickable info section (Title, console, rating, size) opens game details
+            let info_block_resp = ui.vertical(|ui| {
+                // Title
+                let title_text = RichText::new(&game.title)
+                    .color(theme.text_color())
+                    .strong()
+                    .size(13.0);
+                ui.add(egui::Label::new(title_text).truncate());
+
+                ui.add_space(4.0);
+
+                // Platform & Year
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(&game.console_name)
+                            .size(10.0)
+                            .color(theme.primary_color()),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(&game.year)
+                                .size(10.0)
+                                .color(Color32::from_white_alpha(120)),
+                        );
+                    });
+                });
+
+                ui.add_space(2.0);
+
+                // Rating & File size
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(format!("★ {:.1}", game.rating))
+                            .size(11.0)
+                            .color(Color32::from_rgb(255, 204, 0)),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(&game.file_size)
+                                .size(10.0)
+                                .color(Color32::from_white_alpha(140)),
+                        );
+                    });
+                });
+            });
+
+            // Make clicking the info section open game details
+            let info_interact = ui.interact(
+                info_block_resp.response.rect,
+                ui.id().with("info_block_click").with(&game.id),
+                egui::Sense::click(),
+            );
+            if info_interact.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            if info_interact.on_hover_text("📖 Нажмите на название или описание, чтобы открыть информацию об игре").clicked() {
                 *on_game_clicked = Some(game.clone());
             }
 
-            ui.add_space(4.0);
-
-            // 3. Info row: Console & Year
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(&game.console_name)
-                        .size(10.0)
-                        .color(theme.primary_color()),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        RichText::new(&game.year)
-                            .size(10.0)
-                            .color(Color32::from_white_alpha(120)),
-                    );
-                });
-            });
-
-            ui.add_space(2.0);
-
-            // 4. Rating & File size row
-            ui.horizontal(|ui| {
-                ui.label(
-                    RichText::new(format!("★ {:.1}", game.rating))
-                        .size(11.0)
-                        .color(Color32::from_rgb(255, 204, 0)),
-                );
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(
-                        RichText::new(&game.file_size)
-                            .size(10.0)
-                            .color(Color32::from_white_alpha(140)),
-                    );
-                });
-            });
-
             ui.add_space(6.0);
 
-            // 5. Action Buttons (Favorite + Download/Play) - Info button removed!
+            // 5. Action Buttons (Favorite + Download/Play)
             let btn_row_size = Vec2::new(inner_width, 28.0);
             ui.allocate_ui_with_layout(
                 btn_row_size,
@@ -281,18 +294,4 @@ fn render_game_card(
             );
         });
     });
-
-    // Make the entire card frame clickable to open game details (unless a button or cover was clicked)
-    let card_rect = frame_response.response.rect;
-    let card_interact = ui.interact(card_rect, ui.id().with("card_click").with(&game.id), egui::Sense::click());
-    if card_interact.on_hover_text("📖 Нажмите на карточку, чтобы открыть информацию об игре").clicked() {
-        if on_download_clicked.is_none()
-            && on_play_clicked.is_none()
-            && on_favorite_toggled.is_none()
-            && on_view_image.is_none()
-            && on_game_clicked.is_none()
-        {
-            *on_game_clicked = Some(game.clone());
-        }
-    }
 }
