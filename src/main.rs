@@ -185,6 +185,54 @@ impl RetroRomsApp {
         app
     }
 
+fn strip_rom_tags(stem: &str) -> String {
+    let mut result = String::new();
+    let mut depth_paren = 0;
+    let mut depth_bracket = 0;
+    for c in stem.chars() {
+        match c {
+            '(' => depth_paren += 1,
+            ')' => {
+                if depth_paren > 0 {
+                    depth_paren -= 1;
+                }
+            }
+            '[' => depth_bracket += 1,
+            ']' => {
+                if depth_bracket > 0 {
+                    depth_bracket -= 1;
+                }
+            }
+            _ => {
+                if depth_paren == 0 && depth_bracket == 0 {
+                    result.push(c);
+                }
+            }
+        }
+    }
+    result.trim().to_string()
+}
+
+fn normalize_title_for_rom_match(title: &str) -> String {
+    let t = title.trim();
+    let t = if let Some(stripped) = t.strip_suffix(", The") {
+        format!("The {}", stripped)
+    } else if let Some(stripped) = t.strip_suffix(", the") {
+        format!("The {}", stripped)
+    } else if let Some(stripped) = t.strip_suffix(", A") {
+        format!("A {}", stripped)
+    } else if let Some(stripped) = t.strip_suffix(", An") {
+        format!("An {}", stripped)
+    } else {
+        t.to_string()
+    };
+    t.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect()
+}
+
+impl RetroRomsApp {
     pub fn set_status(&mut self, msg: impl Into<String>) {
         self.status_message = msg.into();
     }
@@ -225,35 +273,62 @@ impl RetroRomsApp {
                 if let Some(path_str) = &r.local_path {
                     let p = std::path::Path::new(path_str);
                     if p.exists() {
+                        let console_title_key = format!("{}:{}", r.console_slug, r.game_title.to_lowercase());
                         if p.starts_with(&download_dir) {
                             completed_in_dir.entry(r.game_id.clone()).or_insert_with(|| path_str.clone());
-                            completed_in_dir.entry(r.game_title.to_lowercase()).or_insert_with(|| path_str.clone());
+                            completed_in_dir.entry(console_title_key.clone()).or_insert_with(|| path_str.clone());
                         }
                         completed_anywhere.entry(r.game_id.clone()).or_insert_with(|| path_str.clone());
-                        completed_anywhere.entry(r.game_title.to_lowercase()).or_insert_with(|| path_str.clone());
+                        completed_anywhere.entry(console_title_key).or_insert_with(|| path_str.clone());
                     }
                 }
             }
         }
 
+        const VALID_EXTS: &[&str] = &[
+            "nes", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc",
+            "n64", "z64", "v64", "nds", "pce", "iso", "cue", "chd", "zip", "7z", "rom",
+        ];
+
         let update_card = |g: &mut GameCard| {
-            // First: Search directly in the current configured download directory
+            let g_console_title_key = format!("{}:{}", g.console_slug, g.title.to_lowercase());
+
+            // 1. Priority: Check DB completed downloads that are inside current download_dir (exact game ID or console + title)
+            if let Some(path) = completed_in_dir.get(&g.id).or_else(|| completed_in_dir.get(&g_console_title_key)) {
+                g.is_downloaded = true;
+                g.local_file_path = Some(path.clone());
+                return;
+            }
+
+            // 2. Check DB completed downloads anywhere on disk
+            if let Some(path) = completed_anywhere.get(&g.id).or_else(|| completed_anywhere.get(&g_console_title_key)) {
+                g.is_downloaded = true;
+                g.local_file_path = Some(path.clone());
+                return;
+            }
+
+            // 3. Fallback: Search directly on disk in configured download directories
             let folder_name = console_folder_map.get(&g.console_slug).cloned().unwrap_or_else(|| "ROMs".to_string());
             let console_folder = g.console_name.replace(['/', '\\'], "_");
-            let target_subfolders = [
-                download_dir.join(&folder_name),
-                download_dir.join(&console_folder),
-                download_dir.join(&g.console_slug),
-                download_dir.clone(),
-            ];
+            let mut target_subfolders = Vec::new();
+            if !folder_name.is_empty() {
+                target_subfolders.push(download_dir.join(&folder_name));
+            }
+            if !console_folder.is_empty() {
+                target_subfolders.push(download_dir.join(&console_folder));
+            }
+            if !g.console_slug.is_empty() {
+                target_subfolders.push(download_dir.join(&g.console_slug));
+            }
+            target_subfolders.push(download_dir.clone());
 
-            let title_clean: String = g.title.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
             let raw_title = g.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
             let safe_title = raw_title.trim_end_matches('.').trim().to_string();
+            let title_clean = normalize_title_for_rom_match(&g.title);
 
             for target_subfolder in &target_subfolders {
                 if target_subfolder.exists() {
-                    for ext in &["nes", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc", "n64", "z64", "v64", "nds", "pce", "iso", "cue", "chd", "zip", "7z", "rom"] {
+                    for ext in VALID_EXTS {
                         let candidate1 = target_subfolder.join(format!("{}.{}", safe_title, ext));
                         if candidate1.exists() {
                             g.is_downloaded = true;
@@ -265,9 +340,22 @@ impl RetroRomsApp {
                         for entry in entries.flatten() {
                             let entry_path = entry.path();
                             if entry_path.is_file() {
+                                let ext = entry_path
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .unwrap_or("")
+                                    .to_lowercase();
+                                if !VALID_EXTS.contains(&ext.as_str()) {
+                                    continue;
+                                }
+
                                 if let Some(stem) = entry_path.file_stem().and_then(|n| n.to_str()) {
-                                    let stem_clean: String = stem.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
-                                    if !stem_clean.is_empty() && (stem_clean.starts_with(&title_clean) || title_clean.starts_with(&stem_clean)) {
+                                    let stem_without_tags = strip_rom_tags(stem);
+                                    let stem_clean = normalize_title_for_rom_match(&stem_without_tags);
+                                    let raw_stem_clean = normalize_title_for_rom_match(stem);
+
+                                    // Exact equality check prevents false positives from prefix matching
+                                    if !title_clean.is_empty() && (stem_clean == title_clean || raw_stem_clean == title_clean) {
                                         g.is_downloaded = true;
                                         g.local_file_path = Some(entry_path.to_string_lossy().to_string());
                                         return;
@@ -277,20 +365,6 @@ impl RetroRomsApp {
                         }
                     }
                 }
-            }
-
-            // Next: Check DB completed downloads that are INSIDE current download_dir
-            if let Some(path) = completed_in_dir.get(&g.id).or_else(|| completed_in_dir.get(&g.title.to_lowercase())) {
-                g.is_downloaded = true;
-                g.local_file_path = Some(path.clone());
-                return;
-            }
-
-            // Fallback: Check any DB completed downloads on disk
-            if let Some(path) = completed_anywhere.get(&g.id).or_else(|| completed_anywhere.get(&g.title.to_lowercase())) {
-                g.is_downloaded = true;
-                g.local_file_path = Some(path.clone());
-                return;
             }
 
             g.is_downloaded = false;
@@ -593,7 +667,7 @@ impl RetroRomsApp {
         let raw_title = game.title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "_");
         let safe_title_trimmed = raw_title.trim_end_matches('.').trim().to_string();
         let safe_title = raw_title.clone();
-        let title_clean: String = game.title.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
+        let title_clean = normalize_title_for_rom_match(&game.title);
 
         let console_ext = retroms_desktop::downloader::get_console_default_rom_extension(&game.console_slug);
         let mut extensions = vec![console_ext, "nes", "sfc", "smc", "bin", "gen", "md", "smd", "gba", "gb", "gbc", "n64", "z64", "v64", "nds", "pce", "iso", "cue", "chd", "zip", "7z", "rom"];
@@ -640,14 +714,26 @@ impl RetroRomsApp {
                 }
             }
 
-            // Fuzzy alphanumeric match (e.g. "Super Mario Bros. (World).nes", "Super_Mario_Bros.zip", etc.)
+            // Alphanumeric match (e.g. "Flintstones, The (USA).sfc", "Super_Mario_Bros.zip", etc.)
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
                     let entry_path = entry.path();
                     if entry_path.is_file() {
+                        let ext = entry_path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("")
+                            .to_lowercase();
+                        if !extensions.iter().any(|&e| e.eq_ignore_ascii_case(&ext)) {
+                            continue;
+                        }
+
                         if let Some(stem) = entry_path.file_stem().and_then(|n| n.to_str()) {
-                            let stem_clean: String = stem.to_lowercase().chars().filter(|c| c.is_alphanumeric()).collect();
-                            if !stem_clean.is_empty() && (stem_clean.starts_with(&title_clean) || title_clean.starts_with(&stem_clean)) {
+                            let stem_without_tags = strip_rom_tags(stem);
+                            let stem_clean = normalize_title_for_rom_match(&stem_without_tags);
+                            let raw_stem_clean = normalize_title_for_rom_match(stem);
+
+                            if !title_clean.is_empty() && (stem_clean == title_clean || raw_stem_clean == title_clean) {
                                 return Some(fix_rom_extension(entry_path));
                             }
                         }

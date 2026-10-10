@@ -28,21 +28,28 @@ pub fn render_catalog_grid(
         .id_salt("catalog_grid_scroll")
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            let available_width = ui.available_width().max(320.0);
-            let min_card_width = 190.0;
+            // Reserve padding for vertical scrollbar and panel margins
+            let scrollbar_reserve = 16.0;
+            let available_width = (ui.available_width() - scrollbar_reserve).max(200.0);
             let spacing = 12.0;
+            let min_card_width = 180.0;
 
-            // Compute columns based on min width, and stretch cards evenly to fill width
-            let cols = ((available_width + spacing) / (min_card_width + spacing))
+            // Compute columns dynamically based on actual available width
+            let cols = (((available_width + spacing) / (min_card_width + spacing))
                 .floor()
-                .max(1.0) as usize;
-            let card_width = ((available_width - (cols as f32 - 1.0) * spacing) / cols as f32)
-                .max(min_card_width);
+                .max(1.0)) as usize;
+
+            // Divide remaining width evenly among columns so cards fill available width without overflowing
+            let total_spacing = (cols as f32 - 1.0) * spacing;
+            let card_width = ((available_width - total_spacing) / cols as f32)
+                .max(min_card_width)
+                .floor();
             let card_height = 290.0;
 
             let mut row_idx = 0;
             while row_idx < games.len() {
                 ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = spacing;
                     for col in 0..cols {
                         let idx = row_idx + col;
                         if idx < games.len() {
@@ -59,9 +66,6 @@ pub fn render_catalog_grid(
                                 on_play_clicked,
                                 on_view_image,
                             );
-                            if col + 1 < cols {
-                                ui.add_space(spacing);
-                            }
                         }
                     }
                 });
@@ -113,18 +117,21 @@ fn render_game_card(
     on_play_clicked: &mut Option<GameCard>,
     on_view_image: &mut Option<(String, String)>,
 ) {
+    let margin = 8.0;
+    let inner_width = (width - margin * 2.0).max(100.0);
+    let inner_height = (height - margin * 2.0).max(100.0);
+
     let frame = Frame::none()
         .fill(theme.card_bg_color())
         .rounding(Rounding::same(8.0))
         .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.3)))
-        .inner_margin(8.0);
+        .inner_margin(margin);
 
     frame.show(ui, |ui| {
-        ui.set_width(width);
-        ui.set_height(height);
+        ui.set_min_size(Vec2::new(inner_width, inner_height));
+        ui.set_max_size(Vec2::new(inner_width, inner_height));
 
         ui.vertical(|ui| {
-            let inner_width = (width - 16.0).max(120.0);
             let img_height = 140.0;
             let img_box_size = Vec2::new(inner_width, img_height);
 
@@ -261,7 +268,7 @@ fn render_game_card(
                     }
 
                     // Main Action: Download (opens ROM versions list) or Play
-                    let main_btn_width = (inner_width - 38.0).max(80.0);
+                    let main_btn_width = (inner_width - 38.0).max(50.0);
                     if game.is_downloaded {
                         if ui
                             .add_sized(
