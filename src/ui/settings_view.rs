@@ -153,6 +153,8 @@ pub fn render_settings_view(
                         settings.retroarch_cores = crate::config::get_default_retroarch_cores();
                     }
 
+                    let mut picked_core = None;
+
                     for console in consoles.iter() {
                         let slug = &console.slug;
                         let default_core = crate::config::get_default_retroarch_cores()
@@ -171,12 +173,16 @@ pub fn render_settings_view(
                             if ui.button("Обзор .dll...").clicked() {
                                 if let Some(dll_file) = pick_executable_file(&format!("Выберите ядро RetroArch для {}", console.name)) {
                                     let filename = dll_file.file_name().unwrap_or_default().to_string_lossy().to_string();
-                                    *core_entry = filename;
-                                    let _ = settings.save();
+                                    picked_core = Some((slug.clone(), filename));
                                 }
                             }
                         });
                         ui.add_space(2.0);
+                    }
+
+                    if let Some((slug, filename)) = picked_core {
+                        settings.retroarch_cores.insert(slug, filename);
+                        let _ = settings.save();
                     }
                 });
             });
