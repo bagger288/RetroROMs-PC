@@ -1,6 +1,6 @@
 use crate::models::{GameCard, RomFileVersion};
 use crate::theme::ThemePreset;
-use egui::{Align2, Color32, Frame, RichText, Rounding, ScrollArea, Stroke, Vec2, Window};
+use egui::{Align2, Color32, Frame, RichText, Rounding, ScrollArea, Vec2, Window};
 
 pub fn render_rom_versions_modal(
     ctx: &egui::Context,
@@ -10,12 +10,13 @@ pub fn render_rom_versions_modal(
     theme: ThemePreset,
     on_download_version: &mut Option<(GameCard, RomFileVersion)>,
 ) {
-    let mut is_open = game.is_some();
-    if !is_open {
+    if game.is_none() {
         return;
     }
 
     let g = game.as_ref().unwrap().clone();
+    let mut is_open = true;
+    let mut close_requested = false;
 
     Window::new(format!("💾 Выбор версии ROM: {}", g.title))
         .open(&mut is_open)
@@ -103,7 +104,7 @@ pub fn render_rom_versions_modal(
                                     region_or_type: "ROM".into(),
                                 },
                             ));
-                            is_open = false;
+                            close_requested = true;
                         }
                         ui.add_space(20.0);
                     });
@@ -169,7 +170,7 @@ pub fn render_rom_versions_modal(
                                             .clicked()
                                         {
                                             *on_download_version = Some((g.clone(), ver.clone()));
-                                            is_open = false;
+                                            close_requested = true;
                                         }
 
                                         ui.end_row();
@@ -183,13 +184,13 @@ pub fn render_rom_versions_modal(
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     if ui.button("Закрыть").clicked() {
-                        is_open = false;
+                        close_requested = true;
                     }
                 });
             });
         });
 
-    if !is_open {
+    if !is_open || close_requested {
         *game = None;
     }
 }
