@@ -204,10 +204,8 @@ impl ThemePreset {
         // Window styling (modals)
         visuals.window_rounding = egui::Rounding::same(10.0);
         visuals.window_stroke = Stroke::new(1.0_f32, self.card_border_color());
-        visuals.window_shadow = egui::epaint::Shadow {
-            extrusion: 16.0,
-            color: Color32::from_black_alpha(if is_light { 40 } else { 120 }),
-        };
+        visuals.window_shadow.color = Color32::from_black_alpha(if is_light { 40 } else { 120 });
+        visuals.window_shadow.blur = 16.0_f32;
 
         // Non-interactive items
         visuals.widgets.noninteractive.bg_fill = self.card_bg_color();
