@@ -190,9 +190,9 @@ export component CatalogGrid inherits Rectangle {
     property <length> min-card-width: 175px;
     property <length> card-height: 275px;
 
-    property <int> cols: Math.max(1, Math.floor((self.width - 24px + root.gap) / (root.min-card-width + root.gap)));
-    property <length> card-width: Math.floor((self.width - 24px - (root.cols - 1) * root.gap) / root.cols);
-    property <int> total-rows: Math.ceil(root.games.length / root.cols);
+    property <int> cols: Math.max(1, Math.floor(((self.width - 24px + root.gap) / 1px) / ((root.min-card-width + root.gap) / 1px)));
+    property <length> card-width: (self.width - 24px - (root.cols - 1) * root.gap) / root.cols;
+    property <int> total-rows: (root.games.length + root.cols - 1) / root.cols;
 
     if root.games.length == 0 : VerticalLayout {
         alignment: center;
@@ -215,7 +215,7 @@ export component CatalogGrid inherits Rectangle {
     }
 
     if root.games.length > 0 : Flickable {
-        viewport-height: (root.total-rows * (root.card-height + root.gap)) + 70px;
+        content-height: (root.total-rows * (root.card-height + root.gap)) + 70px;
 
         for game[idx] in root.games : GameCardItem {
             property <int> col-idx: idx - Math.floor(idx / root.cols) * root.cols;

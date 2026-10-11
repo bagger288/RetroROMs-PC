@@ -109,4 +109,12 @@ impl ThemePreset {
             _ => Color::from_argb_u8(255, 17, 24, 39), // #111827
         }
     }
+
+    pub fn card_border_color(&self) -> Color {
+        match self {
+            ThemePreset::OledBlack => Color::from_argb_u8(255, 20, 20, 20),
+            ThemePreset::LightClassic => Color::from_argb_u8(255, 220, 225, 235),
+            _ => Color::from_argb_u8(255, 28, 40, 60), // #1c283c
+        }
+    }
 }

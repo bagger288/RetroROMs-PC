@@ -1376,6 +1376,7 @@ fn apply_theme_to_ui(ui: &MainWindow, theme_str: &str) {
     Theme::get(ui).set_secondary(preset.secondary_color());
     Theme::get(ui).set_window_bg(preset.window_bg_color());
     Theme::get(ui).set_card_bg(preset.card_bg_color());
+    Theme::get(ui).set_card_border(preset.card_border_color());
 }
 
 fn sync_consoles_to_ui(ui: &MainWindow, state: &AppState) {
