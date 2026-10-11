@@ -39,7 +39,8 @@ pub fn render_catalog_table(
 
             let row_h = 44.0;
             let margin_x = 12.0;
-            let available_w = (ui.available_width() - 16.0).max(fixed_total + 180.0 + margin_x);
+            let scrollbar_reserve = 18.0;
+            let available_w = (ui.available_width() - scrollbar_reserve).max(fixed_total + 180.0);
             let title_w = (available_w - margin_x - fixed_total).max(180.0);
 
             // Table Header Row
@@ -74,7 +75,7 @@ pub fn render_catalog_table(
                 let card_frame = Frame::none()
                     .fill(bg_color)
                     .rounding(Rounding::same(6.0))
-                    .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.12)))
+                    .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.12)))
                     .inner_margin(egui::Margin::symmetric(6.0, 3.0));
 
                 card_frame.show(ui, |ui| {
@@ -161,8 +162,8 @@ pub fn render_catalog_table(
                             )
                             .truncate()
                             .frame(false),
-                        );
-                        title_resp.on_hover_text(&game.title);
+                        )
+                        .on_hover_text(&game.title);
                         if title_resp.clicked() {
                             *on_game_clicked = Some(game.clone());
                         }

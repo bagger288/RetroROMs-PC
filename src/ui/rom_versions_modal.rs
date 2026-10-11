@@ -18,16 +18,13 @@ pub fn render_rom_versions_modal(
     let mut is_open = true;
     let mut close_requested = false;
 
-    // Constrain window size with strict max_width so it can NEVER auto-expand across the screen
+    // Fixed size modal window: cannot auto-expand across the screen
     Window::new(format!("💾 Выбор версии ROM: {}", g.title))
         .open(&mut is_open)
-        .resizable(true)
+        .resizable(false)
+        .collapsible(false)
         .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-        .default_size([700.0, 500.0])
-        .min_width(540.0)
-        .max_width(740.0)
-        .min_height(360.0)
-        .max_height(600.0)
+        .fixed_size(Vec2::new(720.0, 480.0))
         .show(ctx, |ui| {
             ui.vertical(|ui| {
                 // 1. Header info
@@ -122,14 +119,14 @@ pub fn render_rom_versions_modal(
                         .auto_shrink([false, false])
                         .max_height(360.0)
                         .show(ui, |ui| {
-                            let dl_btn_w = 100.0;
+                            let dl_btn_w = 96.0;
                             let badge_w = 54.0;
 
                             for ver in rom_versions {
                                 let card_frame = Frame::none()
                                     .fill(theme.card_bg_color())
                                     .rounding(Rounding::same(6.0))
-                                    .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.2)))
+                                    .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.2)))
                                     .inner_margin(egui::Margin::symmetric(10.0, 7.0));
 
                                 card_frame.show(ui, |ui| {
@@ -138,13 +135,13 @@ pub fn render_rom_versions_modal(
 
                                         // Region Badge Pill (Fixed width, distinct colors)
                                         let (badge_bg, badge_fg) = match ver.region_or_type.as_str() {
-                                            "RUS" => (Color32::from_rgb(0, 100, 160), Color32::from_rgb(180, 235, 255)),
-                                            "USA" => (Color32::from_rgb(30, 120, 60), Color32::from_rgb(200, 255, 210)),
-                                            "EUR" => (Color32::from_rgb(150, 110, 20), Color32::from_rgb(255, 240, 190)),
-                                            "JAP" => (Color32::from_rgb(160, 50, 30), Color32::from_rgb(255, 210, 200)),
-                                            "HACK" => (Color32::from_rgb(110, 40, 140), Color32::from_rgb(240, 200, 255)),
-                                            "GOODSET" => (Color32::from_rgb(160, 30, 90), Color32::from_rgb(255, 200, 230)),
-                                            _ => (Color32::from_rgb(50, 55, 70), Color32::from_white_alpha(200)),
+                                             "RUS" => (Color32::from_rgb(0, 100, 160), Color32::from_rgb(180, 235, 255)),
+                                             "USA" => (Color32::from_rgb(30, 120, 60), Color32::from_rgb(200, 255, 210)),
+                                             "EUR" => (Color32::from_rgb(150, 110, 20), Color32::from_rgb(255, 240, 190)),
+                                             "JAP" => (Color32::from_rgb(160, 50, 30), Color32::from_rgb(255, 210, 200)),
+                                             "HACK" => (Color32::from_rgb(110, 40, 140), Color32::from_rgb(240, 200, 255)),
+                                             "GOODSET" => (Color32::from_rgb(160, 30, 90), Color32::from_rgb(255, 200, 230)),
+                                             _ => (Color32::from_rgb(50, 55, 70), Color32::from_white_alpha(200)),
                                         };
 
                                         Frame::none()
@@ -163,8 +160,8 @@ pub fn render_rom_versions_modal(
                                                 );
                                             });
 
-                                        // Middle section: Filename + Category/Size
-                                        let middle_w = (ui.available_width() - dl_btn_w - 20.0).max(180.0);
+                                        // Middle section: Filename + Category/Size (fills remaining width exactly)
+                                        let middle_w = (ui.available_width() - dl_btn_w - 12.0).max(180.0);
                                         ui.allocate_ui_with_layout(
                                             Vec2::new(middle_w, 34.0),
                                             egui::Layout::top_down(egui::Align::Min),
@@ -200,22 +197,20 @@ pub fn render_rom_versions_modal(
                                             },
                                         );
 
-                                        // Download button docked to right edge
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            let dl_btn = ui.add_sized(
-                                                [dl_btn_w, 28.0],
-                                                egui::Button::new(
-                                                    RichText::new("⬇ Скачать")
-                                                        .color(theme.primary_color())
-                                                        .strong()
-                                                        .size(11.5),
-                                                ),
-                                            );
-                                            if dl_btn.on_hover_text("Скачать эту версию ROM").clicked() {
-                                                *on_download_version = Some((g.clone(), ver.clone()));
-                                                close_requested = true;
-                                            }
-                                        });
+                                        // Download button directly placed in the row
+                                        let dl_btn = ui.add_sized(
+                                            [dl_btn_w, 28.0],
+                                            egui::Button::new(
+                                                RichText::new("⬇ Скачать")
+                                                    .color(theme.primary_color())
+                                                    .strong()
+                                                    .size(11.5),
+                                            ),
+                                        );
+                                        if dl_btn.on_hover_text("Скачать эту версию ROM").clicked() {
+                                            *on_download_version = Some((g.clone(), ver.clone()));
+                                            close_requested = true;
+                                        }
                                     });
                                 });
 

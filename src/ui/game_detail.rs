@@ -22,13 +22,10 @@ pub fn render_game_detail_window(
 
     Window::new(format!("🎮 {}", g.title))
         .open(&mut is_open)
-        .resizable(true)
+        .resizable(false)
+        .collapsible(false)
         .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-        .default_size([720.0, 600.0])
-        .min_width(500.0)
-        .max_width(760.0)
-        .min_height(400.0)
-        .max_height(720.0)
+        .fixed_size(Vec2::new(760.0, 580.0))
         .show(ctx, |ui| {
             ScrollArea::vertical()
                 .id_salt("game_detail_scroll")
@@ -143,7 +140,7 @@ pub fn render_game_detail_window(
                     ui.label(RichText::new("📖 Описание игры").strong().size(13.0));
                     ui.add_space(4.0);
                     if !g.description.is_empty() {
-                        ui.label(RichText::new(&g.description).size(12.0));
+                        ui.add(egui::Label::new(RichText::new(&g.description).size(12.0)).wrap());
                     } else if is_loading_versions {
                         ui.horizontal(|ui| {
                             ui.spinner();
@@ -190,14 +187,14 @@ pub fn render_game_detail_window(
                             }
                         });
                     } else {
-                        let dl_btn_w = 100.0;
+                        let dl_btn_w = 96.0;
                         let badge_w = 54.0;
 
                         for ver in rom_versions {
                             let card_frame = Frame::none()
                                 .fill(theme.card_bg_color())
                                 .rounding(Rounding::same(6.0))
-                                .stroke(Stroke::new(1.0, theme.primary_color().gamma_multiply(0.2)))
+                                .stroke(Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.2)))
                                 .inner_margin(egui::Margin::symmetric(10.0, 7.0));
 
                             card_frame.show(ui, |ui| {
@@ -230,7 +227,7 @@ pub fn render_game_detail_window(
                                             );
                                         });
 
-                                    let text_width = (ui.available_width() - dl_btn_w - 20.0).max(180.0);
+                                    let text_width = (ui.available_width() - dl_btn_w - 12.0).max(180.0);
                                     ui.allocate_ui_with_layout(
                                         Vec2::new(text_width, 34.0),
                                         egui::Layout::top_down(egui::Align::Min),
@@ -266,20 +263,18 @@ pub fn render_game_detail_window(
                                         },
                                     );
 
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        let dl_btn = ui.add_sized(
-                                            [dl_btn_w, 28.0],
-                                            egui::Button::new(
-                                                RichText::new("⬇ Скачать")
-                                                    .color(theme.primary_color())
-                                                    .strong()
-                                                    .size(11.5),
-                                            ),
-                                        );
-                                        if dl_btn.on_hover_text("Скачать эту версию ROM").clicked() {
-                                            *on_download_version = Some((g.clone(), ver.clone()));
-                                        }
-                                    });
+                                    let dl_btn = ui.add_sized(
+                                        [dl_btn_w, 28.0],
+                                        egui::Button::new(
+                                            RichText::new("⬇ Скачать")
+                                                .color(theme.primary_color())
+                                                .strong()
+                                                .size(11.5),
+                                        ),
+                                    );
+                                    if dl_btn.on_hover_text("Скачать эту версию ROM").clicked() {
+                                        *on_download_version = Some((g.clone(), ver.clone()));
+                                    }
                                 });
                             });
                             ui.add_space(4.0);
