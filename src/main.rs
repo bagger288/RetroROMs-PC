@@ -18,7 +18,7 @@ use retroms_desktop::ui::{
     get_console_badge_info, get_format_label, get_region_label, NavTab, SortOption, ViewMode,
 };
 
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, ModelRc, VecModel};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,6 +37,7 @@ struct AppState {
     total_pages: usize,
     is_loading_games: bool,
     search_query: String,
+    is_search_mode: bool,
     search_results: Vec<GameCard>,
     search_platform_filter: Option<String>,
     is_searching: bool,
@@ -104,6 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         total_pages: 1,
         is_loading_games: false,
         search_query: String::new(),
+        is_search_mode: false,
         search_results: Vec::new(),
         search_platform_filter: None,
         is_searching: false,
@@ -238,12 +240,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ui_weak = main_window.as_weak();
         tokio::spawn(async move {
             while let Some(_game_id) = img_completed_rx.recv().await {
-                let state = state.lock().unwrap();
+                let state_ref = state.clone();
                 let ui_weak = ui_weak.clone();
-                let games_slint = build_slint_games(&state);
-                let favs_slint = build_slint_favorites(&state);
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak.upgrade() {
+                        let state = state_ref.lock().unwrap();
+                        let games_slint = build_slint_games(&state);
+                        let favs_slint = build_slint_favorites(&state);
                         ui.set_catalog_games(ModelRc::new(VecModel::from(games_slint)));
                         ui.set_favorite_games(ModelRc::new(VecModel::from(favs_slint)));
                     }
@@ -407,11 +410,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         state.set_status(&status_msg);
 
                         let ui_weak = ui_weak_clone.clone();
-                        let games_slint = build_slint_games(&state);
-                        let platforms = build_search_platforms(&state);
+                        let state_ref = state_clone.clone();
 
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(ui) = ui_weak.upgrade() {
+                                let state = state_ref.lock().unwrap();
+                                let games_slint = build_slint_games(&state);
+                                let platforms = build_search_platforms(&state);
                                 ui.set_is_searching(false);
                                 ui.set_search_results_count(count as i32);
                                 ui.set_search_platforms(ModelRc::new(VecModel::from(platforms)));
@@ -430,11 +435,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let status_msg = format!("Офлайн-поиск: найдено {} игр (сеть: {})", count, e);
 
                         let ui_weak = ui_weak_clone.clone();
-                        let games_slint = build_slint_games(&state);
-                        let platforms = build_search_platforms(&state);
+                        let state_ref = state_clone.clone();
 
                         let _ = slint::invoke_from_event_loop(move || {
                             if let Some(ui) = ui_weak.upgrade() {
+                                let state = state_ref.lock().unwrap();
+                                let games_slint = build_slint_games(&state);
+                                let platforms = build_search_platforms(&state);
                                 ui.set_is_searching(false);
                                 ui.set_search_results_count(count as i32);
                                 ui.set_search_platforms(ModelRc::new(VecModel::from(platforms)));
@@ -552,18 +559,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         })
                         .collect();
 
-                    let screenshots: Vec<ScreenshotData> = game
-                        .screenshot_urls
-                        .iter()
-                        .map(|url| ScreenshotData {
-                            url: url.clone().into(),
-                            img: slint::Image::default(),
-                            has_img: false,
-                        })
-                        .collect();
+                    let screenshot_urls = game.screenshot_urls.clone();
 
                     let _ = slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
+                            let screenshots: Vec<ScreenshotData> = screenshot_urls
+                                .iter()
+                                .map(|url| ScreenshotData {
+                                    url: url.clone().into(),
+                                    img: slint::Image::default(),
+                                    has_img: false,
+                                })
+                                .collect();
                             ui.set_detail_is_loading_versions(false);
                             ui.set_detail_rom_versions(ModelRc::new(VecModel::from(slint_versions)));
                             ui.set_detail_screenshots(ModelRc::new(VecModel::from(screenshots)));
@@ -759,7 +766,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 token.store(true, Ordering::SeqCst);
             }
             state.active_downloads.remove(&(dl_id as i64));
-            let _ = state.db.update_download_status(dl_id as i64, DownloadStatus::Cancelled, None);
+            let _ = state.db.update_download_status(dl_id as i64, DownloadStatus::Cancelled, None, None);
             reload_downloads_history(&mut state);
         });
     }
@@ -1150,23 +1157,25 @@ fn trigger_load_games(
                 let status_msg = format!("Загружено {} игр ({})", count, console.short_name);
                 st.set_status(&status_msg);
 
-                let games_slint = build_slint_games(&st);
-                let cats_slint: Vec<CategoryData> = st
-                    .categories
-                    .iter()
-                    .map(|c| CategoryData {
-                        key: c.key.clone().into(),
-                        label: c.label.clone().into(),
-                        is_selected: c.key == st.selected_category,
-                    })
-                    .collect();
-
-                let ui_weak = ui_weak.clone();
                 let cur_p = st.current_page as i32;
                 let tot_p = st.total_pages as i32;
+                let ui_weak = ui_weak.clone();
+                let state_ref = state.clone();
+                drop(st);
 
                 let _ = slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak.upgrade() {
+                        let st = state_ref.lock().unwrap();
+                        let games_slint = build_slint_games(&st);
+                        let cats_slint: Vec<CategoryData> = st
+                            .categories
+                            .iter()
+                            .map(|c| CategoryData {
+                                key: c.key.clone().into(),
+                                label: c.label.clone().into(),
+                                is_selected: c.key == st.selected_category,
+                            })
+                            .collect();
                         ui.set_is_loading_games(false);
                         ui.set_current_page(cur_p);
                         ui.set_total_pages(tot_p);
@@ -1296,11 +1305,11 @@ async fn start_download_async(
     }
 
     let download_mgr = { state.lock().unwrap().download_manager.clone() };
-    download_mgr.start_download(
+    download_mgr.download_game(
         record_id,
         game,
+        Some(file_name),
         direct_url,
-        file_name,
         target_dir,
         console_folder,
         auto_unpack,
@@ -1454,18 +1463,14 @@ fn sync_downloads_to_ui(ui_weak: &slint::Weak<MainWindow>, state: &AppState) {
 }
 
 fn sync_displayed_games_to_ui(ui_weak: &slint::Weak<MainWindow>, state: &AppState) {
-    let games_slint = build_slint_games(state);
-    let favs_slint = build_slint_favorites(state);
-    let fav_count = favs_slint.len() as i32;
-    let ui_weak = ui_weak.clone();
-
-    let _ = slint::invoke_from_event_loop(move || {
-        if let Some(ui) = ui_weak.upgrade() {
-            ui.set_catalog_games(ModelRc::new(VecModel::from(games_slint)));
-            ui.set_favorite_games(ModelRc::new(VecModel::from(favs_slint)));
-            ui.set_favorites_count(fav_count);
-        }
-    });
+    if let Some(ui) = ui_weak.upgrade() {
+        let games_slint = build_slint_games(state);
+        let favs_slint = build_slint_favorites(state);
+        let fav_count = favs_slint.len() as i32;
+        ui.set_catalog_games(ModelRc::new(VecModel::from(games_slint)));
+        ui.set_favorite_games(ModelRc::new(VecModel::from(favs_slint)));
+        ui.set_favorites_count(fav_count);
+    }
 }
 
 fn build_slint_games(state: &AppState) -> Vec<GameCardData> {
@@ -1630,16 +1635,12 @@ fn download_record_to_slint(record: &DownloadRecord) -> DownloadItemData {
 fn play_rom_path(settings: &AppSettings, console_slug: &str, path: &Path) {
     if settings.use_retroarch && !settings.retroarch_path.trim().is_empty() {
         let core = settings.get_retroarch_core_for_console(console_slug);
-        let core_path = Path::new(&settings.retroarch_path)
-            .parent()
-            .unwrap_or(Path::new(""))
-            .join("cores")
-            .join(&core);
+        let core_opt = if core.is_empty() { None } else { Some(core.as_str()) };
         let _ = launch_retroarch(
-            Path::new(&settings.retroarch_path),
-            &settings.retroarch_args,
-            &core_path,
+            &settings.retroarch_path,
             path,
+            core_opt,
+            &settings.retroarch_args,
         );
     } else if let Some(emu_path) = settings.emulator_paths.get(console_slug) {
         if !emu_path.trim().is_empty() {
@@ -1648,7 +1649,7 @@ fn play_rom_path(settings: &AppSettings, console_slug: &str, path: &Path) {
                 .get(console_slug)
                 .cloned()
                 .unwrap_or_default();
-            let _ = launch_emulator(Path::new(emu_path), &emu_args, path);
+            let _ = launch_emulator(emu_path, path, &emu_args);
             return;
         }
         let _ = open::that(path);

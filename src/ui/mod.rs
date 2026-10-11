@@ -1,5 +1,4 @@
-use crate::models::{ConsoleInfo, DownloadRecord, DownloadStatus, GameCard, RomFileVersion, ZipRomEntry};
-use slint::SharedString;
+use crate::models::GameCard;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavTab {
