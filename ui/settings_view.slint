@@ -1,0 +1,489 @@
+import { Theme } from "theme.slint";
+import { PillButton } from "widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component SettingsView inherits Rectangle {
+    in-out property <string> download-dir: "RetroROMs_Downloads";
+    in-out property <bool> auto-unpack: true;
+    in-out property <bool> delete-zip: false;
+    in-out property <string> active-theme: "ArcadeNeon";
+    in-out property <bool> use-retroarch: false;
+    in-out property <string> retroarch-path: "";
+    in-out property <string> retroarch-args: "";
+
+    in-out property <string> emu-nes: "";
+    in-out property <string> emu-genesis: "";
+    in-out property <string> emu-snes: "";
+    in-out property <string> emu-ps1: "";
+    in-out property <string> emu-gba: "";
+    in-out property <string> emu-n64: "";
+
+    callback browse-download-dir();
+    callback auto-unpack-toggled(bool);
+    callback delete-zip-toggled(bool);
+    callback theme-selected(string);
+    callback use-retroarch-toggled(bool);
+    callback browse-retroarch-exe();
+    callback retroarch-args-changed(string);
+    callback browse-emu(string); // slug
+
+    background: Theme.window-bg;
+
+    ScrollView {
+        padding: 16px;
+
+        VerticalLayout {
+            spacing: 16px;
+
+            Text {
+                text: "⚙ Настройки приложения";
+                font-size: 18px;
+                font-weight: 700;
+                color: Theme.primary;
+            }
+
+            // 1. Download Path Card
+            Rectangle {
+                border-radius: Theme.border-radius-md;
+                background: Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "📁 ПАПКА СОХРАНЕНИЯ ROMs";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Rectangle {
+                            height: 34px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                Text {
+                                    text: root.download-dir;
+                                    font-size: 12px;
+                                    color: #ffffff;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        PillButton {
+                            text: "Обзор…";
+                            active: false;
+                            clicked => { root.browse-download-dir(); }
+                        }
+                    }
+
+                    Text {
+                        text: "В этой папке автоматически создаются подкаталоги по именам консолей (NES, MegaDrive, SNES…)";
+                        font-size: 11px;
+                        color: Theme.text-muted;
+                    }
+                }
+            }
+
+            // 2. Unpack Settings Card
+            Rectangle {
+                border-radius: Theme.border-radius-md;
+                background: Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "📦 РАСПАКОВКА АРХИВОВ (SMART UNPACK)";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+
+                    // Checkbox 1
+                    Rectangle {
+                        height: 28px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Rectangle {
+                                width: 18px;
+                                height: 18px;
+                                border-radius: 4px;
+                                background: root.auto-unpack ? Theme.primary : Theme.surface;
+                                border-width: 1px;
+                                border-color: root.auto-unpack ? Theme.primary : Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                if root.auto-unpack : Text {
+                                    text: "✓";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: #ffffff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Text {
+                                text: "Автоматически распаковывать однофайловые ZIP-архивы";
+                                font-size: 12px;
+                                color: #ffffff;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.auto-unpack-toggled(!root.auto-unpack); }
+                            mouse-cursor: pointer;
+                        }
+                    }
+
+                    // Checkbox 2
+                    Rectangle {
+                        height: 28px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Rectangle {
+                                width: 18px;
+                                height: 18px;
+                                border-radius: 4px;
+                                background: root.delete-zip ? Theme.primary : Theme.surface;
+                                border-width: 1px;
+                                border-color: root.delete-zip ? Theme.primary : Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                if root.delete-zip : Text {
+                                    text: "✓";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: #ffffff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Text {
+                                text: "Удалять исходный .zip файл после успешного извлечения РОМа";
+                                font-size: 12px;
+                                color: #ffffff;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.delete-zip-toggled(!root.delete-zip); }
+                            mouse-cursor: pointer;
+                        }
+                    }
+
+                    Text {
+                        text: "Многофайловые архивы (GoodSet, сборники переводов) всегда открывают диалог выбора файлов.";
+                        font-size: 11px;
+                        color: Theme.text-muted;
+                    }
+                }
+            }
+
+            // 3. Theme Presets Card
+            Rectangle {
+                border-radius: Theme.border-radius-md;
+                background: Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "🎨 ТЕМА ОФОРМЛЕНИЯ";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        PillButton {
+                            text: "🎮 RetroROMs Blue";
+                            active: root.active-theme == "ArcadeNeon";
+                            clicked => { root.theme-selected("ArcadeNeon"); }
+                        }
+
+                        PillButton {
+                            text: "🎮 Nintendo Retro";
+                            active: root.active-theme == "NintendoRetro";
+                            clicked => { root.theme-selected("NintendoRetro"); }
+                        }
+
+                        PillButton {
+                            text: "🌀 Sega Mega";
+                            active: root.active-theme == "SegaMega";
+                            clicked => { root.theme-selected("SegaMega"); }
+                        }
+
+                        PillButton {
+                            text: "🌴 Synthwave";
+                            active: root.active-theme == "Retrowave";
+                            clicked => { root.theme-selected("Retrowave"); }
+                        }
+
+                        PillButton {
+                            text: "🖤 OLED Black";
+                            active: root.active-theme == "OledBlack";
+                            clicked => { root.theme-selected("OledBlack"); }
+                        }
+
+                        PillButton {
+                            text: "👾 Game Boy";
+                            active: root.active-theme == "GameBoy";
+                            clicked => { root.theme-selected("GameBoy"); }
+                        }
+                    }
+                }
+            }
+
+            // 4. RetroArch Universal Integration Card
+            Rectangle {
+                border-radius: Theme.border-radius-md;
+                background: Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 8px;
+
+                    Text {
+                        text: "🕹 ЕДИНЫЙ ЭМУЛЯТОР RETROARCH";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+
+                    // Checkbox RetroArch
+                    Rectangle {
+                        height: 28px;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Rectangle {
+                                width: 18px;
+                                height: 18px;
+                                border-radius: 4px;
+                                background: root.use-retroarch ? Theme.primary : Theme.surface;
+                                border-width: 1px;
+                                border-color: root.use-retroarch ? Theme.primary : Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                if root.use-retroarch : Text {
+                                    text: "✓";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: #ffffff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Text {
+                                text: "Использовать RetroArch для запуска всех игр (единый эмулятор)";
+                                font-size: 12px;
+                                font-weight: 700;
+                                color: #ffffff;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.use-retroarch-toggled(!root.use-retroarch); }
+                            mouse-cursor: pointer;
+                        }
+                    }
+
+                    Text {
+                        text: "Путь к исполняемому файлу RetroArch (retroarch.exe):";
+                        font-size: 11px;
+                        color: Theme.text-secondary;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Rectangle {
+                            height: 34px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+
+                            HorizontalLayout {
+                                padding-left: 10px;
+                                padding-right: 10px;
+                                Text {
+                                    text: root.retroarch-path != "" ? root.retroarch-path : "C:\\RetroArch-Win64\\retroarch.exe";
+                                    font-size: 12px;
+                                    color: root.retroarch-path != "" ? #ffffff : Theme.text-muted;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                        }
+
+                        PillButton {
+                            text: "Обзор…";
+                            active: false;
+                            clicked => { root.browse-retroarch-exe(); }
+                        }
+                    }
+                }
+            }
+
+            // 5. Standalone Emulators Card
+            Rectangle {
+                border-radius: Theme.border-radius-md;
+                background: Theme.card-bg;
+                border-width: 1px;
+                border-color: Theme.card-border;
+
+                VerticalLayout {
+                    padding: 14px;
+                    spacing: 10px;
+
+                    Text {
+                        text: "🎮 ОТДЕЛЬНЫЕ ЭМУЛЯТОРЫ ДЛЯ СИСТЕМ (ПК)";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+
+                    Text {
+                        text: "Используются, когда отключён режим единого эмулятора RetroArch:";
+                        font-size: 11px;
+                        color: Theme.text-muted;
+                    }
+
+                    // NES
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { width: 70px; text: "NES / Dendy:"; font-size: 11.5px; color: #ffffff; vertical-alignment: center; }
+                        Rectangle {
+                            height: 30px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                Text { text: root.emu-nes; font-size: 11px; color: #ffffff; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                        PillButton { text: "Обзор…"; active: false; clicked => { root.browse-emu("dendy"); } }
+                    }
+
+                    // Genesis
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { width: 70px; text: "Genesis:"; font-size: 11.5px; color: #ffffff; vertical-alignment: center; }
+                        Rectangle {
+                            height: 30px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                Text { text: root.emu-genesis; font-size: 11px; color: #ffffff; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                        PillButton { text: "Обзор…"; active: false; clicked => { root.browse-emu("genesis"); } }
+                    }
+
+                    // SNES
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { width: 70px; text: "SNES:"; font-size: 11.5px; color: #ffffff; vertical-alignment: center; }
+                        Rectangle {
+                            height: 30px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                Text { text: root.emu-snes; font-size: 11px; color: #ffffff; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                        PillButton { text: "Обзор…"; active: false; clicked => { root.browse-emu("snes"); } }
+                    }
+
+                    // PS1
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { width: 70px; text: "PS1:"; font-size: 11.5px; color: #ffffff; vertical-alignment: center; }
+                        Rectangle {
+                            height: 30px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                Text { text: root.emu-ps1; font-size: 11px; color: #ffffff; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                        PillButton { text: "Обзор…"; active: false; clicked => { root.browse-emu("psx"); } }
+                    }
+
+                    // GBA
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text { width: 70px; text: "GBA:"; font-size: 11.5px; color: #ffffff; vertical-alignment: center; }
+                        Rectangle {
+                            height: 30px;
+                            border-radius: Theme.border-radius-sm;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            horizontal-stretch: 1;
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                Text { text: root.emu-gba; font-size: 11px; color: #ffffff; vertical-alignment: center; overflow: elide; }
+                            }
+                        }
+                        PillButton { text: "Обзор…"; active: false; clicked => { root.browse-emu("gba"); } }
+                    }
+                }
+            }
+        }
+    }
+}

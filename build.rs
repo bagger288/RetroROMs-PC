@@ -1,4 +1,6 @@
 fn main() {
+    slint_build::compile("ui/main.slint").expect("Slint build failed");
+
     // Only compile Windows resources when building for Windows targets
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() == "windows" {
         let mut res = winres::WindowsResource::new();

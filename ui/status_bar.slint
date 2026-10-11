@@ -1,0 +1,32 @@
+import { Theme } from "theme.slint";
+
+export component StatusBar inherits Rectangle {
+    in-out property <string> status-text: "Готово";
+    in-out property <int> active-downloads: 0;
+
+    height: Theme.statusbar-height;
+    background: Theme.card-bg;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: space-between;
+
+        Text {
+            text: root.status-text;
+            font-size: 11px;
+            color: Theme.text-secondary;
+            vertical-alignment: center;
+        }
+
+        if root.active-downloads > 0 : Text {
+            text: "⬇ Активных загрузок: " + root.active-downloads;
+            font-size: 11px;
+            font-weight: 700;
+            color: Theme.primary;
+            vertical-alignment: center;
+        }
+    }
+}

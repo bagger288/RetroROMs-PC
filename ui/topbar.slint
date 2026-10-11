@@ -1,0 +1,186 @@
+import { Theme } from "theme.slint";
+import { PillButton, SearchBar } from "widgets.slint";
+import { CategoryData, PlatformFilterData } from "models.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component Topbar inherits Rectangle {
+    in-out property <string> search-query: "";
+    in-out property <bool> is-search-mode: false;
+    in-out property <bool> is-searching: false;
+    in-out property <int> search-results-count: 0;
+    in-out property <[PlatformFilterData]> search-platforms: [];
+
+    in-out property <int> view-mode: 0; // 0: Grid, 1: Table
+    in-out property <int> sort-option: 0; // 0: Default, 1: Rating, 2: NameAsc, 3: NameDesc
+    in-out property <string> sort-label: "По умолчанию";
+    in-out property <bool> sort-menu-open: false;
+
+    in-out property <string> active-category: "top";
+    in-out property <[CategoryData]> extra-categories: [];
+    in-out property <bool> is-loading: false;
+
+    callback search-triggered(string);
+    callback search-cleared();
+    callback view-mode-changed(int);
+    callback sort-changed(int);
+    callback category-selected(string);
+    callback platform-filter-selected(string);
+    callback refresh-clicked();
+
+    background: Theme.window-bg;
+    height: Theme.topbar-height;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 10px;
+        alignment: start;
+
+        // 1. Search Bar
+        Rectangle {
+            width: 320px;
+            SearchBar {
+                text <=> root.search-query;
+                accepted(q) => { root.search-triggered(q); }
+                text-changed(q) => { root.search-triggered(q); }
+                cleared => { root.search-cleared(); }
+            }
+        }
+
+        // 2. View Mode Switcher
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: center;
+
+            Text {
+                text: "Вид:";
+                font-size: 12px;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+            }
+
+            PillButton {
+                text: "Сетка";
+                icon: "⊞";
+                active: root.view-mode == 0;
+                clicked => { root.view-mode-changed(0); }
+            }
+
+            PillButton {
+                text: "Таблица";
+                icon: "☰";
+                active: root.view-mode == 1;
+                clicked => { root.view-mode-changed(1); }
+            }
+        }
+
+        // 3. Sort Selector
+        Rectangle {
+            border-radius: Theme.border-radius-pill;
+            background: sort-touch.has-hover ? Theme.surface-hover : Theme.surface;
+            border-width: 1px;
+            border-color: root.sort-menu-open ? Theme.primary : Theme.border;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 10px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 6px;
+                alignment: center;
+
+                Text {
+                    text: "Сортировка: " + root.sort-label;
+                    font-size: 12px;
+                    color: Theme.text-primary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "▼";
+                    font-size: 8px;
+                    color: Theme.text-muted;
+                    vertical-alignment: center;
+                }
+            }
+
+            sort-touch := TouchArea {
+                clicked => {
+                    root.sort-menu-open = !root.sort-menu-open;
+                }
+                mouse-cursor: pointer;
+            }
+        }
+
+        // 4. Middle Section: Category Chips or Search Platform Chips
+        if root.is-search-mode : HorizontalLayout {
+            spacing: 6px;
+            alignment: center;
+
+            Text {
+                text: root.is-searching ? "⏳ Поиск…" : "Найдено: " + root.search-results-count + " игр";
+                font-size: 11.5px;
+                color: Theme.secondary;
+                vertical-alignment: center;
+            }
+
+            for plat in root.search-platforms : PillButton {
+                text: plat.label + " (" + plat.count + ")";
+                active: plat.is-selected;
+                clicked => { root.platform-filter-selected(plat.slug); }
+            }
+        }
+
+        if !root.is-search-mode : HorizontalLayout {
+            spacing: 6px;
+            alignment: center;
+
+            PillButton {
+                text: "Прочее";
+                icon: "📁";
+                active: root.active-category == "misc";
+                clicked => { root.category-selected("misc"); }
+            }
+
+            PillButton {
+                text: "Homebrew";
+                icon: "🎮";
+                active: root.active-category == "homebrew";
+                clicked => { root.category-selected("homebrew"); }
+            }
+
+            PillButton {
+                text: "Популярные";
+                icon: "🔥";
+                active: root.active-category == "top";
+                clicked => { root.category-selected("top"); }
+            }
+
+            PillButton {
+                text: "Лучшие";
+                icon: "★";
+                active: root.active-category == "best";
+                clicked => { root.category-selected("best"); }
+            }
+        }
+
+        // Spacer to push Refresh to far right
+        Rectangle {
+            horizontal-stretch: 1;
+        }
+
+        // 5. Far Right: Refresh Button
+        PillButton {
+            text: root.is-loading ? "Загрузка…" : "Обновить";
+            icon: "⟳";
+            active: false;
+            clicked => {
+                if !root.is-loading {
+                    root.refresh-clicked();
+                }
+            }
+        }
+    }
+}

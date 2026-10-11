@@ -1,0 +1,87 @@
+import { Theme } from "theme.slint";
+import { GameCardData } from "models.slint";
+import { CatalogGrid } from "catalog_grid.slint";
+import { CatalogTable } from "catalog_table.slint";
+
+export component FavoritesView inherits Rectangle {
+    in-out property <[GameCardData]> games: [];
+    in-out property <int> view-mode: 0; // 0: Grid, 1: Table
+
+    callback game-detail(string);
+    callback game-download(string);
+    callback game-favorite-toggled(string, bool);
+    callback game-play(string);
+    callback game-cover-view(string);
+
+    background: Theme.window-bg;
+
+    VerticalLayout {
+        padding-top: 10px;
+        spacing: 8px;
+
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "⭐ Избранные игры";
+                font-size: 18px;
+                font-weight: 700;
+                color: Theme.primary;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: "(" + root.games.length + " игр)";
+                font-size: 13px;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+            }
+        }
+
+        if root.games.length == 0 : VerticalLayout {
+            alignment: center;
+            spacing: 8px;
+            height: 200px;
+
+            Text {
+                text: "Список избранного пуст";
+                font-size: 16px;
+                font-weight: 700;
+                color: Theme.text-primary;
+                horizontal-alignment: center;
+            }
+
+            Text {
+                text: "Нажимайте на сердечко (♡) на любой игре в каталоге, чтобы добавить её сюда.";
+                font-size: 13px;
+                color: Theme.text-muted;
+                horizontal-alignment: center;
+            }
+        }
+
+        if root.games.length > 0 && root.view-mode == 0 : CatalogGrid {
+            games: root.games;
+            current-page: 1;
+            total-pages: 1;
+            game-detail(id) => { root.game-detail(id); }
+            game-download(id) => { root.game-download(id); }
+            game-favorite-toggled(id, fav) => { root.game-favorite-toggled(id, fav); }
+            game-play(id) => { root.game-play(id); }
+            game-cover-view(id) => { root.game-cover-view(id); }
+        }
+
+        if root.games.length > 0 && root.view-mode == 1 : CatalogTable {
+            games: root.games;
+            current-page: 1;
+            total-pages: 1;
+            game-detail(id) => { root.game-detail(id); }
+            game-download(id) => { root.game-download(id); }
+            game-favorite-toggled(id, fav) => { root.game-favorite-toggled(id, fav); }
+            game-play(id) => { root.game-play(id); }
+            game-cover-view(id) => { root.game-cover-view(id); }
+        }
+    }
+}

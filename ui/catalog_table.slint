@@ -1,0 +1,287 @@
+import { Theme } from "theme.slint";
+import { GameCardData } from "models.slint";
+import { ActionButton, FavoriteButton, PillButton } from "widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component CatalogTable inherits Rectangle {
+    in-out property <[GameCardData]> games: [];
+    in-out property <int> current-page: 1;
+    in-out property <int> total-pages: 1;
+
+    callback game-detail(string);
+    callback game-download(string);
+    callback game-favorite-toggled(string, bool);
+    callback game-play(string);
+    callback game-cover-view(string);
+    callback page-changed(int);
+
+    background: Theme.window-bg;
+
+    VerticalLayout {
+        padding: 12px;
+        spacing: 6px;
+
+        // 1. Table Header Row
+        Rectangle {
+            height: 36px;
+            border-radius: Theme.border-radius-md;
+            background: Theme.surface;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    width: 76px;
+                    text: "Обложка";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    width: 110px;
+                    text: "Платформа";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    width: 50px;
+                    text: "Год";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: "Название";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    width: 80px;
+                    text: "Регион";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    width: 70px;
+                    text: "Размер";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    width: 130px;
+                    text: "Действия";
+                    font-size: 11.5px;
+                    font-weight: 700;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 2. Table Data Rows inside ScrollView
+        ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                spacing: 4px;
+
+                for game[idx] in root.games : Rectangle {
+                    height: 54px;
+                    border-radius: Theme.border-radius-md;
+                    background: row-touch.has-hover ? Theme.surface-hover : ((idx - Math.floor(idx / 2) * 2 == 0) ? Theme.card-bg : Theme.surface);
+                    border-width: 1px;
+                    border-color: row-touch.has-hover ? Theme.border-light : Theme.card-border;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        // Cover Thumbnail
+                        Rectangle {
+                            width: 76px;
+                            height: 44px;
+                            border-radius: 4px;
+                            background: #0a0f18;
+                            clip: true;
+                            y: (parent.height - self.height) / 2;
+
+                            if game.has-cover : Image {
+                                width: 100%;
+                                height: 100%;
+                                source: game.cover-image;
+                                image-fit: contain;
+                            }
+
+                            if !game.has-cover : Text {
+                                text: "🎮";
+                                font-size: 18px;
+                                color: Theme.text-muted;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            TouchArea {
+                                clicked => { root.game-cover-view(game.id); }
+                                mouse-cursor: pointer;
+                            }
+                        }
+
+                        // Platform
+                        Text {
+                            width: 110px;
+                            text: game.console-name;
+                            font-size: 11.5px;
+                            font-weight: 700;
+                            color: Theme.primary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        // Year
+                        Text {
+                            width: 50px;
+                            text: game.year != "" ? game.year : "—";
+                            font-size: 11px;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        // Title (Clickable)
+                        Text {
+                            horizontal-stretch: 1;
+                            text: game.title;
+                            font-size: 12.5px;
+                            font-weight: 700;
+                            color: #ffffff;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        // Region Badge
+                        Rectangle {
+                            width: 80px;
+                            height: 22px;
+                            border-radius: 4px;
+                            background: Theme.surface;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            y: (parent.height - self.height) / 2;
+
+                            Text {
+                                text: game.region-label != "" ? game.region-label : "ROM";
+                                font-size: 10px;
+                                font-weight: 700;
+                                color: Theme.subname-color;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+
+                        // File size
+                        Text {
+                            width: 70px;
+                            text: game.file-size != "" ? game.file-size : "—";
+                            font-size: 11px;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        // Actions: Fav star + Download/Play
+                        HorizontalLayout {
+                            width: 130px;
+                            spacing: 6px;
+                            alignment: center;
+
+                            FavoriteButton {
+                                is-favorite: game.is-favorite;
+                                clicked => { root.game-favorite-toggled(game.id, !game.is-favorite); }
+                            }
+
+                            ActionButton {
+                                text: game.is-downloaded ? "Играть" : "Скачать";
+                                icon: game.is-downloaded ? "▶" : "⬇";
+                                is-play: game.is-downloaded;
+                                font-size: 11px;
+                                horizontal-stretch: 1;
+                                clicked => {
+                                    if game.is-downloaded {
+                                        root.game-play(game.id);
+                                    } else {
+                                        root.game-download(game.id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    row-touch := TouchArea {
+                        clicked => { root.game-detail(game.id); }
+                    }
+                }
+            }
+        }
+
+        // 3. Pagination Bar at bottom
+        if root.total-pages > 1 : Rectangle {
+            height: 38px;
+
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: center;
+
+                Text {
+                    text: "Страница " + root.current-page + " из " + root.total-pages;
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: Theme.primary;
+                    vertical-alignment: center;
+                }
+
+                PillButton {
+                    text: "◀ Назад";
+                    active: false;
+                    clicked => {
+                        if root.current-page > 1 {
+                            root.page-changed(root.current-page - 1);
+                        }
+                    }
+                }
+
+                PillButton {
+                    text: "Вперёд ▶";
+                    active: false;
+                    clicked => {
+                        if root.current-page < root.total-pages {
+                            root.page-changed(root.current-page + 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

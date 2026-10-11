@@ -1,0 +1,408 @@
+import { Theme } from "theme.slint";
+import { GameCardData, ConsoleData, CategoryData, PlatformFilterData, DownloadItemData, RomVersionData, ZipEntryData, ScreenshotData } from "models.slint";
+import { Sidebar } from "sidebar.slint";
+import { Topbar } from "topbar.slint";
+import { CatalogGrid } from "catalog_grid.slint";
+import { CatalogTable } from "catalog_table.slint";
+import { DownloadsView } from "downloads_view.slint";
+import { FavoritesView } from "favorites_view.slint";
+import { SettingsView } from "settings_view.slint";
+import { StatusBar } from "status_bar.slint";
+import { GameDetailModal } from "dialogs/game_detail.slint";
+import { RomVersionsModal } from "dialogs/rom_versions.slint";
+import { ZipModal } from "dialogs/zip_modal.slint";
+import { ImageViewerModal } from "dialogs/image_viewer.slint";
+
+export { Theme, GameCardData, ConsoleData, CategoryData, PlatformFilterData, DownloadItemData, RomVersionData, ZipEntryData, ScreenshotData }
+
+export component MainWindow inherits Window {
+    title: "RetroROMs — EmuLand Catalog & ROM Manager";
+    preferred-width: 1200px;
+    preferred-height: 780px;
+    min-width: 880px;
+    min-height: 560px;
+    background: Theme.window-bg;
+
+    // Navigation & Views
+    in-out property <int> current-tab: 0; // 0: Catalog, 1: Downloads, 2: Favorites, 3: Settings
+    in-out property <int> view-mode: 0; // 0: Grid, 1: Table
+    in-out property <int> sort-option: 0;
+    in-out property <string> sort-label: "По умолчанию";
+    in-out property <bool> sort-menu-open: false;
+
+    // Consoles & Categories
+    in-out property <[ConsoleData]> consoles: [];
+    in-out property <int> selected-console-idx: 0;
+    in-out property <string> active-category: "top";
+    in-out property <[CategoryData]> extra-categories: [];
+
+    // Catalog Games & Pagination
+    in-out property <[GameCardData]> catalog-games: [];
+    in-out property <int> current-page: 1;
+    in-out property <int> total-pages: 1;
+    in-out property <bool> is-loading-games: false;
+
+    // Search
+    in-out property <string> search-query: "";
+    in-out property <bool> is-search-mode: false;
+    in-out property <bool> is-searching: false;
+    in-out property <int> search-results-count: 0;
+    in-out property <[PlatformFilterData]> search-platforms: [];
+
+    // Favorites
+    in-out property <[GameCardData]> favorite-games: [];
+    in-out property <int> favorites-count: 0;
+
+    // Downloads
+    in-out property <[DownloadItemData]> active-downloads: [];
+    in-out property <[DownloadItemData]> download-history: [];
+    in-out property <int> active-downloads-count: 0;
+
+    // Status bar
+    in-out property <string> status-text: "Готово";
+
+    // Settings
+    in-out property <string> settings-download-dir: "RetroROMs_Downloads";
+    in-out property <bool> settings-auto-unpack: true;
+    in-out property <bool> settings-delete-zip: false;
+    in-out property <string> settings-active-theme: "ArcadeNeon";
+    in-out property <bool> settings-use-retroarch: false;
+    in-out property <string> settings-retroarch-path: "";
+    in-out property <string> settings-retroarch-args: "";
+    in-out property <string> settings-emu-nes: "";
+    in-out property <string> settings-emu-genesis: "";
+    in-out property <string> settings-emu-snes: "";
+    in-out property <string> settings-emu-ps1: "";
+    in-out property <string> settings-emu-gba: "";
+    in-out property <string> settings-emu-n64: "";
+
+    // Modals
+    in-out property <bool> show-game-detail: false;
+    in-out property <GameCardData> detail-game;
+    in-out property <[RomVersionData]> detail-rom-versions: [];
+    in-out property <[ScreenshotData]> detail-screenshots: [];
+    in-out property <bool> detail-is-loading-versions: false;
+
+    in-out property <bool> show-rom-versions: false;
+    in-out property <GameCardData> versions-game;
+    in-out property <[RomVersionData]> modal-rom-versions: [];
+    in-out property <bool> versions-is-loading: false;
+
+    in-out property <bool> show-zip-modal: false;
+    in-out property <string> zip-game-title: "";
+    in-out property <[ZipEntryData]> zip-entries: [];
+    in-out property <int> zip-selected-count: 0;
+
+    in-out property <bool> show-image-viewer: false;
+    in-out property <string> viewer-title: "";
+    in-out property <image> viewer-img;
+    in-out property <float> viewer-zoom: 1.0;
+
+    // Callbacks to Rust
+    callback nav-tab-selected(int);
+    callback console-selected(int);
+    callback manage-consoles();
+    callback view-mode-changed(int);
+    callback sort-changed(int);
+    callback category-selected(string);
+    callback platform-filter-selected(string);
+    callback search-triggered(string);
+    callback search-cleared();
+    callback refresh-clicked();
+    callback page-changed(int);
+
+    callback game-detail-opened(string);
+    callback game-detail-closed();
+    callback game-download-clicked(string);
+    callback rom-versions-closed();
+    callback download-version-selected(string, string); // game_id, fid
+    callback game-favorite-toggled(string, bool);
+    callback game-play-clicked(string);
+    callback game-reveal-clicked(string);
+
+    callback image-viewer-opened(string, image);
+    callback image-viewer-closed();
+    callback image-zoom-in();
+    callback image-zoom-out();
+    callback image-zoom-reset();
+
+    callback cancel-download(int);
+    callback play-downloaded-file(string);
+    callback reveal-downloaded-file(string);
+    callback delete-history-item(int);
+    callback clear-download-history();
+
+    callback zip-close();
+    callback zip-select-all();
+    callback zip-deselect-all();
+    callback zip-select-rus-usa();
+    callback zip-toggle-entry(int);
+    callback zip-confirm();
+
+    callback settings-browse-download-dir();
+    callback settings-auto-unpack-toggled(bool);
+    callback settings-delete-zip-toggled(bool);
+    callback settings-theme-selected(string);
+    callback settings-use-retroarch-toggled(bool);
+    callback settings-browse-retroarch-exe();
+    callback settings-browse-emu(string);
+
+    VerticalLayout {
+        spacing: 0;
+
+        // 1. Top Bar
+        topbar := Topbar {
+            search-query <=> root.search-query;
+            is-search-mode: root.is-search-mode;
+            is-searching: root.is-searching;
+            search-results-count: root.search-results-count;
+            search-platforms: root.search-platforms;
+            view-mode: root.view-mode;
+            sort-option: root.sort-option;
+            sort-label: root.sort-label;
+            sort-menu-open <=> root.sort-menu-open;
+            active-category: root.active-category;
+            extra-categories: root.extra-categories;
+            is-loading: root.is-loading-games;
+
+            search-triggered(q) => { root.search-triggered(q); }
+            search-cleared => { root.search-cleared(); }
+            view-mode-changed(m) => { root.view-mode = m; root.view-mode-changed(m); }
+            sort-changed(s) => { root.sort-changed(s); }
+            category-selected(c) => { root.category-selected(c); }
+            platform-filter-selected(p) => { root.platform-filter-selected(p); }
+            refresh-clicked => { root.refresh-clicked(); }
+        }
+
+        // 2. Middle Content (Sidebar + Main View)
+        HorizontalLayout {
+            spacing: 0;
+            vertical-stretch: 1;
+
+            // Sidebar
+            Sidebar {
+                active-tab: root.current-tab;
+                active-downloads-count: root.active-downloads-count;
+                favorites-count: root.favorites-count;
+                consoles: root.consoles;
+                selected-console-idx: root.selected-console-idx;
+                status-text: root.status-text;
+
+                tab-selected(t) => { root.current-tab = t; root.nav-tab-selected(t); }
+                console-selected(idx) => { root.selected-console-idx = idx; root.console-selected(idx); }
+                manage-consoles-clicked => { root.manage-consoles(); }
+            }
+
+            // Divider line
+            Rectangle {
+                width: 1px;
+                background: Theme.border;
+            }
+
+            // Active View
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.window-bg;
+
+                // Tab 0: Catalog
+                if root.current-tab == 0 && root.view-mode == 0 : CatalogGrid {
+                    games: root.catalog-games;
+                    current-page: root.current-page;
+                    total-pages: root.total-pages;
+                    game-detail(id) => { root.game-detail-opened(id); }
+                    game-download(id) => { root.game-download-clicked(id); }
+                    game-favorite-toggled(id, fav) => { root.game-favorite-toggled(id, fav); }
+                    game-play(id) => { root.game-play-clicked(id); }
+                    game-cover-view(id) => { root.game-detail-opened(id); }
+                    page-changed(p) => { root.page-changed(p); }
+                }
+
+                if root.current-tab == 0 && root.view-mode == 1 : CatalogTable {
+                    games: root.catalog-games;
+                    current-page: root.current-page;
+                    total-pages: root.total-pages;
+                    game-detail(id) => { root.game-detail-opened(id); }
+                    game-download(id) => { root.game-download-clicked(id); }
+                    game-favorite-toggled(id, fav) => { root.game-favorite-toggled(id, fav); }
+                    game-play(id) => { root.game-play-clicked(id); }
+                    game-cover-view(id) => { root.game-detail-opened(id); }
+                    page-changed(p) => { root.page-changed(p); }
+                }
+
+                // Tab 1: Downloads
+                if root.current-tab == 1 : DownloadsView {
+                    active-downloads: root.active-downloads;
+                    history-downloads: root.download-history;
+                    cancel-download(id) => { root.cancel-download(id); }
+                    play-file(path) => { root.play-downloaded-file(path); }
+                    reveal-file(path) => { root.reveal-downloaded-file(path); }
+                    delete-history-item(id) => { root.delete-history-item(id); }
+                    clear-history => { root.clear-download-history(); }
+                }
+
+                // Tab 2: Favorites
+                if root.current-tab == 2 : FavoritesView {
+                    games: root.favorite-games;
+                    view-mode: root.view-mode;
+                    game-detail(id) => { root.game-detail-opened(id); }
+                    game-download(id) => { root.game-download-clicked(id); }
+                    game-favorite-toggled(id, fav) => { root.game-favorite-toggled(id, fav); }
+                    game-play(id) => { root.game-play-clicked(id); }
+                    game-cover-view(id) => { root.game-detail-opened(id); }
+                }
+
+                // Tab 3: Settings
+                if root.current-tab == 3 : SettingsView {
+                    download-dir: root.settings-download-dir;
+                    auto-unpack: root.settings-auto-unpack;
+                    delete-zip: root.settings-delete-zip;
+                    active-theme: root.settings-active-theme;
+                    use-retroarch: root.settings-use-retroarch;
+                    retroarch-path: root.settings-retroarch-path;
+                    retroarch-args: root.settings-retroarch-args;
+                    emu-nes: root.settings-emu-nes;
+                    emu-genesis: root.settings-emu-genesis;
+                    emu-snes: root.settings-emu-snes;
+                    emu-ps1: root.settings-emu-ps1;
+                    emu-gba: root.settings-emu-gba;
+                    emu-n64: root.settings-emu-n64;
+
+                    browse-download-dir => { root.settings-browse-download-dir(); }
+                    auto-unpack-toggled(v) => { root.settings-auto-unpack-toggled(v); }
+                    delete-zip-toggled(v) => { root.settings-delete-zip-toggled(v); }
+                    theme-selected(t) => { root.settings-theme-selected(t); }
+                    use-retroarch-toggled(v) => { root.settings-use-retroarch-toggled(v); }
+                    browse-retroarch-exe => { root.settings-browse-retroarch-exe(); }
+                    browse-emu(s) => { root.settings-browse-emu(s); }
+                }
+            }
+        }
+
+        // 3. Status Bar
+        StatusBar {
+            status-text: root.status-text;
+            active-downloads: root.active-downloads-count;
+        }
+    }
+
+    // Floating Sort Menu Popover
+    if root.sort-menu-open : Rectangle {
+        x: 480px;
+        y: Theme.topbar-height - 6px;
+        width: 170px;
+        height: 144px;
+        border-radius: Theme.border-radius-md;
+        background: Theme.card-bg;
+        border-width: 1px;
+        border-color: Theme.border-light;
+
+        VerticalLayout {
+            padding: 6px;
+            spacing: 2px;
+
+            Rectangle {
+                height: 32px;
+                border-radius: 4px;
+                background: root.sort-option == 0 ? Theme.primary : (s0-touch.has-hover ? Theme.surface-hover : transparent);
+                HorizontalLayout {
+                    padding-left: 10px;
+                    Text { text: "По умолчанию"; font-size: 12px; color: #ffffff; vertical-alignment: center; }
+                }
+                s0-touch := TouchArea {
+                    clicked => { root.sort-label = "По умолчанию"; root.sort-changed(0); root.sort-menu-open = false; }
+                    mouse-cursor: pointer;
+                }
+            }
+
+            Rectangle {
+                height: 32px;
+                border-radius: 4px;
+                background: root.sort-option == 1 ? Theme.primary : (s1-touch.has-hover ? Theme.surface-hover : transparent);
+                HorizontalLayout {
+                    padding-left: 10px;
+                    Text { text: "★ По рейтингу"; font-size: 12px; color: #ffffff; vertical-alignment: center; }
+                }
+                s1-touch := TouchArea {
+                    clicked => { root.sort-label = "★ По рейтингу"; root.sort-changed(1); root.sort-menu-open = false; }
+                    mouse-cursor: pointer;
+                }
+            }
+
+            Rectangle {
+                height: 32px;
+                border-radius: 4px;
+                background: root.sort-option == 2 ? Theme.primary : (s2-touch.has-hover ? Theme.surface-hover : transparent);
+                HorizontalLayout {
+                    padding-left: 10px;
+                    Text { text: "А-Я По названию"; font-size: 12px; color: #ffffff; vertical-alignment: center; }
+                }
+                s2-touch := TouchArea {
+                    clicked => { root.sort-label = "А-Я По названию"; root.sort-changed(2); root.sort-menu-open = false; }
+                    mouse-cursor: pointer;
+                }
+            }
+
+            Rectangle {
+                height: 32px;
+                border-radius: 4px;
+                background: root.sort-option == 3 ? Theme.primary : (s3-touch.has-hover ? Theme.surface-hover : transparent);
+                HorizontalLayout {
+                    padding-left: 10px;
+                    Text { text: "Я-А По названию"; font-size: 12px; color: #ffffff; vertical-alignment: center; }
+                }
+                s3-touch := TouchArea {
+                    clicked => { root.sort-label = "Я-А По названию"; root.sort-changed(3); root.sort-menu-open = false; }
+                    mouse-cursor: pointer;
+                }
+            }
+        }
+    }
+
+    // Modal Overlays
+    if root.show-game-detail : GameDetailModal {
+        game: root.detail-game;
+        rom-versions: root.detail-rom-versions;
+        screenshots: root.detail-screenshots;
+        is-loading-versions: root.detail-is-loading-versions;
+
+        close => { root.show-game-detail = false; root.game-detail-closed(); }
+        download-version(fid) => { root.download-version-selected(root.detail-game.id, fid); root.show-game-detail = false; }
+        play => { root.game-play-clicked(root.detail-game.id); }
+        reveal => { root.game-reveal-clicked(root.detail-game.id); }
+        view-cover => { root.image-viewer-opened("Обложка: " + root.detail-game.title, root.detail-game.cover-image); }
+        view-screenshot(url) => { root.image-viewer-opened("Скриншот", root.detail-game.cover-image); }
+    }
+
+    if root.show-rom-versions : RomVersionsModal {
+        game: root.versions-game;
+        rom-versions: root.modal-rom-versions;
+        is-loading: root.versions-is-loading;
+
+        close => { root.show-rom-versions = false; root.rom-versions-closed(); }
+        download-version(fid) => { root.download-version-selected(root.versions-game.id, fid); root.show-rom-versions = false; }
+    }
+
+    if root.show-zip-modal : ZipModal {
+        game-title: root.zip-game-title;
+        entries: root.zip-entries;
+        selected-count: root.zip-selected-count;
+
+        close => { root.show-zip-modal = false; root.zip-close(); }
+        select-all => { root.zip-select-all(); }
+        deselect-all => { root.zip-deselect-all(); }
+        select-rus-usa => { root.zip-select-rus-usa(); }
+        toggle-entry(idx) => { root.zip-toggle-entry(idx); }
+        confirm-extract => { root.show-zip-modal = false; root.zip-confirm(); }
+    }
+
+    if root.show-image-viewer : ImageViewerModal {
+        title: root.viewer-title;
+        img: root.viewer-img;
+        zoom: root.viewer-zoom;
+
+        close => { root.show-image-viewer = false; root.image-viewer-closed(); }
+        zoom-in => { root.image-zoom-in(); }
+        zoom-out => { root.image-zoom-out(); }
+        zoom-reset => { root.image-zoom-reset(); }
+    }
+}

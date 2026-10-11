@@ -1,0 +1,278 @@
+import { Theme } from "theme.slint";
+import { GameCardData } from "models.slint";
+import { ActionButton, FavoriteButton, PillButton } from "widgets.slint";
+
+export component GameCardItem inherits Rectangle {
+    in-out property <GameCardData> game;
+
+    callback cover-clicked();
+    callback detail-clicked();
+    callback download-clicked();
+    callback favorite-toggled();
+    callback play-clicked();
+
+    border-radius: Theme.border-radius-md;
+    background: card-touch.has-hover ? Theme.card-hover-bg : Theme.card-bg;
+    border-width: 1px;
+    border-color: card-touch.has-hover ? Theme.primary : Theme.card-border;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 5px;
+
+        // 1. Cover / Screenshot Container (125px tall)
+        cover-box := Rectangle {
+            height: 125px;
+            border-radius: Theme.border-radius-sm;
+            background: #0a0f18;
+            clip: true;
+
+            if root.game.has-cover : Image {
+                width: 100%;
+                height: 100%;
+                source: root.game.cover-image;
+                image-fit: contain;
+            }
+
+            if !root.game.has-cover : Text {
+                text: "🎮";
+                font-size: 32px;
+                color: Theme.text-muted;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            cover-touch := TouchArea {
+                clicked => { root.cover-clicked(); }
+                mouse-cursor: pointer;
+            }
+        }
+
+        // 2. Title & Metadata
+        VerticalLayout {
+            spacing: 3px;
+
+            // Title
+            Text {
+                text: root.game.title;
+                font-size: 12.5px;
+                font-weight: 700;
+                color: #ffffff;
+                overflow: elide;
+            }
+
+            // Platform Badge & Subname & Year Row
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+
+                // Blue Badge Pill [ NES ]
+                Rectangle {
+                    height: 16px;
+                    border-radius: 3px;
+                    background: Theme.primary;
+
+                    HorizontalLayout {
+                        padding-left: 4px;
+                        padding-right: 4px;
+                        alignment: center;
+                        Text {
+                            text: root.game.badge-text != "" ? root.game.badge-text : "ROM";
+                            font-size: 9px;
+                            font-weight: 700;
+                            color: #ffffff;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Subname text
+                Text {
+                    text: root.game.subname;
+                    font-size: 9.5px;
+                    color: Theme.subname-color;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                // Release Year
+                Text {
+                    text: root.game.year != "" ? root.game.year : "—";
+                    font-size: 10px;
+                    color: Theme.text-muted;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Rating & Format Row
+            HorizontalLayout {
+                spacing: 3px;
+                alignment: start;
+
+                Text {
+                    text: "★";
+                    font-size: 11px;
+                    color: Theme.secondary;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.game.rating-str != "" ? root.game.rating-str : "4.8";
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                Text {
+                    text: root.game.format-label != "" ? root.game.format-label : "ROM";
+                    font-size: 10px;
+                    color: Theme.text-muted;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // 3. Action Buttons Row: [ ⬇ Скачать ] + [ ♡ Heart ]
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: space-between;
+
+            // Main Action Button (Play or Download)
+            ActionButton {
+                text: root.game.is-downloaded ? "Играть" : "Скачать";
+                icon: root.game.is-downloaded ? "▶" : "⬇";
+                is-play: root.game.is-downloaded;
+                horizontal-stretch: 1;
+                clicked => {
+                    if root.game.is-downloaded {
+                        root.play-clicked();
+                    } else {
+                        root.download-clicked();
+                    }
+                }
+            }
+
+            // Favorite Button
+            FavoriteButton {
+                is-favorite: root.game.is-favorite;
+                clicked => {
+                    root.favorite-toggled();
+                }
+            }
+        }
+    }
+
+    card-touch := TouchArea {
+        clicked => {
+            root.detail-clicked();
+        }
+    }
+}
+
+export component CatalogGrid inherits Rectangle {
+    in-out property <[GameCardData]> games: [];
+    in-out property <int> current-page: 1;
+    in-out property <int> total-pages: 1;
+
+    callback game-detail(string);
+    callback game-download(string);
+    callback game-favorite-toggled(string, bool);
+    callback game-play(string);
+    callback game-cover-view(string);
+    callback page-changed(int);
+
+    background: Theme.window-bg;
+
+    property <length> gap: 12px;
+    property <length> min-card-width: 175px;
+    property <length> card-height: 275px;
+
+    property <int> cols: Math.max(1, Math.floor((self.width - 24px + root.gap) / (root.min-card-width + root.gap)));
+    property <length> card-width: Math.floor((self.width - 24px - (root.cols - 1) * root.gap) / root.cols);
+    property <int> total-rows: Math.ceil(root.games.length / root.cols);
+
+    if root.games.length == 0 : VerticalLayout {
+        alignment: center;
+        spacing: 8px;
+
+        Text {
+            text: "Игры не найдены";
+            font-size: 18px;
+            font-weight: 700;
+            color: Theme.text-primary;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: "Попробуйте сменить категорию или поисковый запрос";
+            font-size: 13px;
+            color: Theme.text-muted;
+            horizontal-alignment: center;
+        }
+    }
+
+    if root.games.length > 0 : Flickable {
+        viewport-height: (root.total-rows * (root.card-height + root.gap)) + 70px;
+
+        for game[idx] in root.games : GameCardItem {
+            property <int> col-idx: idx - Math.floor(idx / root.cols) * root.cols;
+            property <int> row-idx: Math.floor(idx / root.cols);
+
+            x: 12px + col-idx * (root.card-width + root.gap);
+            y: 12px + row-idx * (root.card-height + root.gap);
+            width: root.card-width;
+            height: root.card-height;
+            game: game;
+
+            detail-clicked => { root.game-detail(game.id); }
+            download-clicked => { root.game-download(game.id); }
+            cover-clicked => { root.game-cover-view(game.id); }
+            play-clicked => { root.game-play(game.id); }
+            favorite-toggled => { root.game-favorite-toggled(game.id, !game.is-favorite); }
+        }
+
+        // Pagination Bar at Bottom
+        if root.total-pages > 1 : Rectangle {
+            x: 12px;
+            y: root.total-rows * (root.card-height + root.gap) + 16px;
+            width: parent.width - 24px;
+            height: 40px;
+
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: center;
+
+                Text {
+                    text: "Страница " + root.current-page + " из " + root.total-pages;
+                    font-size: 13px;
+                    font-weight: 700;
+                    color: Theme.primary;
+                    vertical-alignment: center;
+                }
+
+                PillButton {
+                    text: "◀ Назад";
+                    active: false;
+                    clicked => {
+                        if root.current-page > 1 {
+                            root.page-changed(root.current-page - 1);
+                        }
+                    }
+                }
+
+                PillButton {
+                    text: "Вперёд ▶";
+                    active: false;
+                    clicked => {
+                        if root.current-page < root.total-pages {
+                            root.page-changed(root.current-page + 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

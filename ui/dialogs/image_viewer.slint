@@ -1,0 +1,92 @@
+import { Theme } from "../theme.slint";
+import { PillButton } from "../widgets.slint";
+
+export component ImageViewerModal inherits Rectangle {
+    in-out property <bool> is-open: false;
+    in-out property <string> title: "Просмотр изображения";
+    in-out property <image> img;
+    in-out property <float> zoom: 1.0;
+
+    callback close();
+    callback zoom-in();
+    callback zoom-out();
+    callback zoom-reset();
+
+    width: 100%;
+    height: 100%;
+    background: #000000dd;
+
+    TouchArea {
+        clicked => { root.close(); }
+    }
+
+    Rectangle {
+        width: Math.min(parent.width - 40px, 860px);
+        height: Math.min(parent.height - 40px, 680px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: Theme.border-radius-md;
+        background: #070b12;
+        border-width: 1px;
+        border-color: Theme.border-light;
+
+        TouchArea {
+            // Block
+        }
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+
+            // Controls toolbar
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: space-between;
+
+                Text {
+                    text: root.title;
+                    font-size: 14px;
+                    font-weight: 700;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+
+                    PillButton { text: "➖"; active: false; clicked => { root.zoom-out(); } }
+                    Text {
+                        text: Math.round(root.zoom * 100) + "%";
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: Theme.primary;
+                        vertical-alignment: center;
+                    }
+                    PillButton { text: "➕"; active: false; clicked => { root.zoom-in(); } }
+                    PillButton { text: "100%"; active: false; clicked => { root.zoom-reset(); } }
+                    PillButton { text: "✖"; active: false; clicked => { root.close(); } }
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.border; }
+
+            // Large Canvas
+            canvas := Rectangle {
+                vertical-stretch: 1;
+                background: #05080f;
+                clip: true;
+
+                Image {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    width: parent.width * root.zoom;
+                    height: parent.height * root.zoom;
+                    source: root.img;
+                    image-fit: contain;
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,87 @@
+export struct GameCardData {
+    id: string,
+    title: string,
+    original_title: string,
+    console_slug: string,
+    console_name: string,
+    genre: string,
+    year: string,
+    publisher: string,
+    developer: string,
+    rating: float,
+    rating_str: string,
+    file_size: string,
+    badge_text: string,
+    subname: string,
+    format_label: string,
+    region_label: string,
+    description: string,
+    cover_image: image,
+    has_cover: bool,
+    is_favorite: bool,
+    is_downloaded: bool,
+    local_path: string,
+}
+
+export struct ConsoleData {
+    slug: string,
+    name: string,
+    short_name: string,
+    category: string, // "home", "portable", "classic"
+    folder_name: string,
+    year: string,
+    icon_key: string,
+    roms_count: string,
+    is_enabled: bool,
+    is_selected: bool,
+}
+
+export struct CategoryData {
+    key: string,
+    label: string,
+    is_selected: bool,
+}
+
+export struct PlatformFilterData {
+    slug: string,
+    label: string,
+    count: int,
+    is_selected: bool,
+}
+
+export struct DownloadItemData {
+    id: int,
+    game_id: string,
+    game_title: string,
+    console_name: string,
+    file_name: string,
+    progress: float,
+    progress_text: string,
+    speed_text: string,
+    status_text: string,
+    status_code: int, // 0: Pending, 1: Downloading, 2: Completed, 3: Failed, 4: Cancelled
+    is_completed: bool,
+    local_path: string,
+}
+
+export struct RomVersionData {
+    fid: string,
+    name: string,
+    size: string,
+    category: string,
+    region_or_type: string,
+    download_url: string,
+}
+
+export struct ZipEntryData {
+    entry_name: string,
+    display_name: string,
+    formatted_size: string,
+    is_selected: bool,
+}
+
+export struct ScreenshotData {
+    url: string,
+    img: image,
+    has_img: bool,
+}

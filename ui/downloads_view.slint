@@ -1,0 +1,289 @@
+import { Theme } from "theme.slint";
+import { DownloadItemData } from "models.slint";
+import { ActionButton, PillButton, ProgressBar } from "widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component DownloadsView inherits Rectangle {
+    in-out property <[DownloadItemData]> active-downloads: [];
+    in-out property <[DownloadItemData]> history-downloads: [];
+
+    callback cancel-download(int);
+    callback play-file(string);
+    callback reveal-file(string);
+    callback delete-history-item(int);
+    callback clear-history();
+
+    background: Theme.window-bg;
+
+    ScrollView {
+        padding: 16px;
+
+        VerticalLayout {
+            spacing: 12px;
+
+            // Title
+            Text {
+                text: "⬇ Загрузки и история";
+                font-size: 18px;
+                font-weight: 700;
+                color: Theme.primary;
+            }
+
+            // 1. Active Downloads Section
+            if root.active-downloads.length > 0 : VerticalLayout {
+                spacing: 8px;
+
+                Text {
+                    text: "АКТИВНЫЕ ЗАГРУЗКИ (" + root.active-downloads.length + ")";
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: Theme.text-muted;
+                }
+
+                for item in root.active-downloads : Rectangle {
+                    border-radius: Theme.border-radius-md;
+                    background: Theme.card-bg;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            Text {
+                                text: item.game-title;
+                                font-size: 13px;
+                                font-weight: 700;
+                                color: #ffffff;
+                            }
+
+                            Text {
+                                text: "(" + item.console-name + ")";
+                                font-size: 12px;
+                                color: Theme.text-secondary;
+                                vertical-alignment: center;
+                                horizontal-stretch: 1;
+                            }
+
+                            PillButton {
+                                text: "✖ Отменить";
+                                active: false;
+                                clicked => { root.cancel-download(item.id); }
+                            }
+                        }
+
+                        ProgressBar {
+                            progress: item.progress;
+                        }
+
+                        HorizontalLayout {
+                            alignment: space-between;
+
+                            Text {
+                                text: item.progress-text;
+                                font-size: 11px;
+                                color: Theme.text-secondary;
+                            }
+
+                            Text {
+                                text: item.speed-text;
+                                font-size: 11px;
+                                font-weight: 700;
+                                color: Theme.primary;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. History Section Header
+            HorizontalLayout {
+                alignment: space-between;
+
+                Text {
+                    text: "ИСТОРИЯ ЗАГРУЗОК";
+                    font-size: 11px;
+                    font-weight: 700;
+                    color: Theme.text-muted;
+                    vertical-alignment: center;
+                }
+
+                if root.history-downloads.length > 0 : PillButton {
+                    text: "🗑 Очистить историю";
+                    active: false;
+                    clicked => { root.clear-history(); }
+                }
+            }
+
+            // History empty state
+            if root.history-downloads.length == 0 : Rectangle {
+                height: 120px;
+                Text {
+                    text: "История загрузок пуста";
+                    font-size: 14px;
+                    color: Theme.text-muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+
+            // History table
+            if root.history-downloads.length > 0 : VerticalLayout {
+                spacing: 4px;
+
+                // Table Header
+                Rectangle {
+                    height: 32px;
+                    border-radius: Theme.border-radius-sm;
+                    background: Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: "Игра";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            width: 110px;
+                            text: "Платформа";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            width: 140px;
+                            text: "Файл";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            width: 80px;
+                            text: "Статус";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            width: 120px;
+                            text: "Действия";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // History rows
+                for hist[idx] in root.history-downloads : Rectangle {
+                    height: 44px;
+                    border-radius: Theme.border-radius-sm;
+                    background: (idx - Math.floor(idx / 2) * 2 == 0) ? Theme.card-bg : Theme.surface;
+                    border-width: 1px;
+                    border-color: Theme.card-border;
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        alignment: start;
+
+                        Text {
+                            horizontal-stretch: 1;
+                            text: hist.game-title;
+                            font-size: 12px;
+                            font-weight: 700;
+                            color: #ffffff;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            width: 110px;
+                            text: hist.console-name;
+                            font-size: 11.5px;
+                            color: Theme.primary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            width: 140px;
+                            text: hist.file-name;
+                            font-size: 11px;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        // Status badge
+                        Rectangle {
+                            width: 80px;
+                            height: 20px;
+                            border-radius: 4px;
+                            background: hist.status-code == 2 ? #00e67625 : (hist.status-code == 3 ? #ff4d4f25 : #64748b25);
+                            y: (parent.height - self.height) / 2;
+
+                            Text {
+                                text: hist.status-text;
+                                font-size: 10px;
+                                font-weight: 700;
+                                color: hist.status-code == 2 ? Theme.success : (hist.status-code == 3 ? Theme.danger : Theme.text-secondary);
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Actions
+                        HorizontalLayout {
+                            width: 120px;
+                            spacing: 4px;
+                            alignment: center;
+
+                            if hist.is-completed : ActionButton {
+                                text: "▶";
+                                is-play: true;
+                                font-size: 11px;
+                                clicked => { root.play-file(hist.local-path); }
+                            }
+
+                            if hist.is-completed : PillButton {
+                                text: "📁";
+                                active: false;
+                                clicked => { root.reveal-file(hist.local-path); }
+                            }
+
+                            PillButton {
+                                text: "✖";
+                                active: false;
+                                clicked => { root.delete-history-item(hist.id); }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

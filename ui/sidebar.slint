@@ -1,0 +1,374 @@
+import { Theme } from "theme.slint";
+import { ConsoleData } from "models.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component Sidebar inherits Rectangle {
+    in-out property <int> active-tab: 0; // 0: Catalog, 1: Downloads, 2: Favorites, 3: Settings
+    in-out property <int> active-downloads-count: 0;
+    in-out property <int> favorites-count: 0;
+    in-out property <[ConsoleData]> consoles: [];
+    in-out property <int> selected-console-idx: 0;
+    in-out property <string> status-text: "Загружено 0 игр (NES)";
+
+    callback tab-selected(int);
+    callback console-selected(int);
+    callback manage-consoles-clicked();
+
+    background: Theme.sidebar-bg;
+    width: Theme.sidebar-width;
+
+    VerticalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 10px;
+        padding-bottom: 6px;
+        spacing: 6px;
+
+        // 1. App Header Branding
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: start;
+
+            Text {
+                text: "🎮";
+                font-size: 24px;
+                color: Theme.primary;
+                vertical-alignment: center;
+            }
+
+            VerticalLayout {
+                spacing: 1px;
+                alignment: center;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Text {
+                        text: "RetroROMs";
+                        font-size: 14.5px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+
+                    Text {
+                        text: "v1.0";
+                        font-size: 10.5px;
+                        color: Theme.text-secondary;
+                        vertical-alignment: bottom;
+                    }
+                }
+
+                Text {
+                    text: "EmuLand Catalog & ROM Manager";
+                    font-size: 9.5px;
+                    color: Theme.text-muted;
+                }
+            }
+        }
+
+        // 2. Navigation Pills
+        VerticalLayout {
+            spacing: 4px;
+
+            // Catalog
+            Rectangle {
+                height: 34px;
+                border-radius: Theme.border-radius-md;
+                background: root.active-tab == 0 ? Theme.primary : (tab0-touch.has-hover ? Theme.surface-hover : transparent);
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "🎮";
+                        font-size: 14px;
+                        color: root.active-tab == 0 ? #ffffff : Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "Каталог игр";
+                        font-size: 12.5px;
+                        font-weight: root.active-tab == 0 ? 700 : 500;
+                        color: root.active-tab == 0 ? #ffffff : #e2e8f0;
+                        vertical-alignment: center;
+                    }
+                }
+
+                tab0-touch := TouchArea {
+                    clicked => { root.tab-selected(0); }
+                    mouse-cursor: pointer;
+                }
+            }
+
+            // Downloads
+            Rectangle {
+                height: 34px;
+                border-radius: Theme.border-radius-md;
+                background: root.active-tab == 1 ? Theme.primary : (tab1-touch.has-hover ? Theme.surface-hover : transparent);
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "⬇";
+                        font-size: 14px;
+                        color: root.active-tab == 1 ? #ffffff : Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "Загрузки";
+                        font-size: 12.5px;
+                        font-weight: root.active-tab == 1 ? 700 : 500;
+                        color: root.active-tab == 1 ? #ffffff : #e2e8f0;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    if root.active-downloads-count > 0 : Rectangle {
+                        background: Theme.secondary;
+                        border-radius: 9px;
+                        height: 18px;
+                        min-width: 18px;
+                        y: (parent.height - self.height) / 2;
+
+                        HorizontalLayout {
+                            padding-left: 5px;
+                            padding-right: 5px;
+                            alignment: center;
+                            Text {
+                                text: root.active-downloads-count;
+                                font-size: 10px;
+                                font-weight: 700;
+                                color: #000000;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                tab1-touch := TouchArea {
+                    clicked => { root.tab-selected(1); }
+                    mouse-cursor: pointer;
+                }
+            }
+
+            // Favorites
+            Rectangle {
+                height: 34px;
+                border-radius: Theme.border-radius-md;
+                background: root.active-tab == 2 ? Theme.primary : (tab2-touch.has-hover ? Theme.surface-hover : transparent);
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "★";
+                        font-size: 14px;
+                        color: root.active-tab == 2 ? #ffffff : Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "Избранное";
+                        font-size: 12.5px;
+                        font-weight: root.active-tab == 2 ? 700 : 500;
+                        color: root.active-tab == 2 ? #ffffff : #e2e8f0;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+
+                    if root.favorites-count > 0 : Rectangle {
+                        background: Theme.secondary;
+                        border-radius: 9px;
+                        height: 18px;
+                        min-width: 18px;
+                        y: (parent.height - self.height) / 2;
+
+                        HorizontalLayout {
+                            padding-left: 5px;
+                            padding-right: 5px;
+                            alignment: center;
+                            Text {
+                                text: root.favorites-count;
+                                font-size: 10px;
+                                font-weight: 700;
+                                color: #000000;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                tab2-touch := TouchArea {
+                    clicked => { root.tab-selected(2); }
+                    mouse-cursor: pointer;
+                }
+            }
+
+            // Settings
+            Rectangle {
+                height: 34px;
+                border-radius: Theme.border-radius-md;
+                background: root.active-tab == 3 ? Theme.primary : (tab3-touch.has-hover ? Theme.surface-hover : transparent);
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "⚙";
+                        font-size: 14px;
+                        color: root.active-tab == 3 ? #ffffff : Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "Настройки";
+                        font-size: 12.5px;
+                        font-weight: root.active-tab == 3 ? 700 : 500;
+                        color: root.active-tab == 3 ? #ffffff : #e2e8f0;
+                        vertical-alignment: center;
+                    }
+                }
+
+                tab3-touch := TouchArea {
+                    clicked => { root.tab-selected(3); }
+                    mouse-cursor: pointer;
+                }
+            }
+        }
+
+        // Divider
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        // 3. Platforms Section Header
+        HorizontalLayout {
+            alignment: space-between;
+
+            Text {
+                text: "ПЛАТФОРМЫ";
+                font-size: 11px;
+                font-weight: 700;
+                color: Theme.text-muted;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                border-radius: Theme.border-radius-sm;
+                background: manage-touch.has-hover ? Theme.surface-hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    padding-top: 2px;
+                    padding-bottom: 2px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    Text {
+                        text: "⚙ Список";
+                        font-size: 10px;
+                        color: Theme.text-secondary;
+                    }
+                }
+
+                manage-touch := TouchArea {
+                    clicked => { root.manage-consoles-clicked(); }
+                    mouse-cursor: pointer;
+                }
+            }
+        }
+
+        Text {
+            text: "ДОМАШНИЕ КОНСОЛИ";
+            font-size: 10px;
+            font-weight: 700;
+            color: Theme.subname-color;
+        }
+
+        // 4. Scrollable List of Consoles
+        consoles-scroll := ScrollView {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                spacing: 2px;
+
+                for console[idx] in root.consoles : Rectangle {
+                    height: 28px;
+                    border-radius: Theme.border-radius-md;
+                    background: (root.active-tab == 0 && root.selected-console-idx == idx) ? Theme.primary
+                                 : (c-touch.has-hover ? Theme.surface-hover : transparent);
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 6px;
+                        alignment: start;
+
+                        Text {
+                            text: console.icon-key != "" ? console.icon-key : "🎮";
+                            font-size: 13px;
+                            color: (root.active-tab == 0 && root.selected-console-idx == idx) ? #ffffff : Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: console.short-name;
+                            font-size: 12px;
+                            font-weight: (root.active-tab == 0 && root.selected-console-idx == idx) ? 700 : 500;
+                            color: (root.active-tab == 0 && root.selected-console-idx == idx) ? #ffffff : #d8e2ec;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                            overflow: elide;
+                        }
+
+                        Text {
+                            text: console.year;
+                            font-size: 10.5px;
+                            color: (root.active-tab == 0 && root.selected-console-idx == idx) ? #e2eeff : Theme.text-muted;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    c-touch := TouchArea {
+                        clicked => {
+                            root.console-selected(idx);
+                        }
+                        mouse-cursor: pointer;
+                    }
+                }
+            }
+        }
+
+        // 5. Sidebar Bottom Status
+        Rectangle {
+            height: 22px;
+            Text {
+                text: root.status-text;
+                font-size: 10px;
+                color: Theme.text-muted;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

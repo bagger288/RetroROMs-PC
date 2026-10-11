@@ -1,0 +1,172 @@
+import { Theme } from "../theme.slint";
+import { ZipEntryData } from "../models.slint";
+import { ActionButton, PillButton } from "../widgets.slint";
+import { ScrollView } from "std-widgets.slint";
+
+export component ZipModal inherits Rectangle {
+    in-out property <bool> is-open: false;
+    in-out property <string> game-title: "";
+    in-out property <[ZipEntryData]> entries: [];
+    in-out property <int> selected-count: 0;
+
+    callback close();
+    callback select-all();
+    callback deselect-all();
+    callback select-rus-usa();
+    callback toggle-entry(int); // index
+    callback confirm-extract();
+
+    width: 100%;
+    height: 100%;
+    background: #000000bb;
+
+    TouchArea {
+        clicked => { root.close(); }
+    }
+
+    Rectangle {
+        width: Math.min(parent.width - 40px, 600px);
+        height: Math.min(parent.height - 40px, 460px);
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        border-radius: Theme.border-radius-md;
+        background: Theme.card-bg;
+        border-width: 1px;
+        border-color: Theme.border-light;
+
+        TouchArea {
+            // Block
+        }
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 10px;
+
+            // Header
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: space-between;
+
+                VerticalLayout {
+                    spacing: 2px;
+                    Text {
+                        text: "📦 Распаковка архива: " + root.game-title;
+                        font-size: 15px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+                    Text {
+                        text: "Архив содержит несколько файлов. Отметьте нужные для распаковки:";
+                        font-size: 11px;
+                        color: Theme.text-secondary;
+                    }
+                }
+
+                PillButton {
+                    text: "✖";
+                    active: false;
+                    clicked => { root.close(); }
+                }
+            }
+
+            Rectangle { height: 1px; background: Theme.border; }
+
+            // Filter actions
+            HorizontalLayout {
+                spacing: 8px;
+                alignment: start;
+
+                PillButton { text: "Выбрать все"; active: false; clicked => { root.select-all(); } }
+                PillButton { text: "Снять все"; active: false; clicked => { root.deselect-all(); } }
+                PillButton { text: "Только RUS / USA"; active: false; clicked => { root.select-rus-usa(); } }
+            }
+
+            // Entries list
+            ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    spacing: 4px;
+
+                    for entry[idx] in root.entries : Rectangle {
+                        height: 34px;
+                        border-radius: Theme.border-radius-sm;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            // Checkbox
+                            Rectangle {
+                                width: 18px;
+                                height: 18px;
+                                border-radius: 4px;
+                                background: entry.is-selected ? Theme.primary : transparent;
+                                border-width: 1px;
+                                border-color: entry.is-selected ? Theme.primary : Theme.border-light;
+                                y: (parent.height - self.height) / 2;
+
+                                if entry.is-selected : Text {
+                                    text: "✓";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    color: #ffffff;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Text {
+                                text: entry.display-name;
+                                font-size: 12px;
+                                color: #ffffff;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+
+                            Text {
+                                text: entry.formatted-size;
+                                font-size: 11px;
+                                color: Theme.text-muted;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => { root.toggle-entry(idx); }
+                            mouse-cursor: pointer;
+                        }
+                    }
+                }
+            }
+
+            // Confirm footer
+            HorizontalLayout {
+                alignment: space-between;
+
+                Text {
+                    text: "Выбрано: " + root.selected-count + " из " + root.entries.length;
+                    font-size: 12px;
+                    color: Theme.text-secondary;
+                    vertical-alignment: center;
+                }
+
+                ActionButton {
+                    text: "Распаковать выбранное (" + root.selected-count + ")";
+                    icon: "📦";
+                    clicked => {
+                        if root.selected-count > 0 {
+                            root.confirm-extract();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

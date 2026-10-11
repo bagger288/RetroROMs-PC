@@ -2,6 +2,7 @@ pub mod archive;
 pub mod config;
 pub mod db;
 pub mod downloader;
+pub mod image_cache;
 pub mod integrations;
 pub mod models;
 pub mod scraper;
