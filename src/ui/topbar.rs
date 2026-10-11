@@ -1,7 +1,7 @@
 use crate::models::CatalogCategory;
 use crate::theme::ThemePreset;
 use crate::ui::{SortOption, ViewMode};
-use egui::{Color32, Frame, RichText, Rounding, ScrollArea, Stroke, Ui, Vec2};
+use egui::{Color32, Frame, RichText, Rounding, ScrollArea, Stroke, Ui};
 
 pub fn render_topbar(
     ui: &mut Ui,

@@ -107,7 +107,7 @@ pub fn render_catalog_grid(
         });
 }
 
-fn get_console_badge_info(slug: &str, console_name: &str) -> (&'static str, &'static str) {
+fn get_console_badge_info(slug: &str, _console_name: &str) -> (&'static str, &'static str) {
     match slug {
         "dendy" => ("NES", "/ Денди / Famicom"),
         "genesis" => ("GENESIS", "/ MegaDrive"),

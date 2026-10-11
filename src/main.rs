@@ -184,6 +184,12 @@ impl RetroRomsApp {
             consoles.iter().position(|c| c.is_enabled).unwrap_or(0)
         };
 
+        let initial_console_name = consoles
+            .get(selected_console_idx)
+            .map(|c| c.short_name.as_str())
+            .unwrap_or("NES")
+            .to_string();
+
         let mut app = Self {
             db,
             settings,
@@ -199,10 +205,7 @@ impl RetroRomsApp {
             current_page: 1,
             total_pages: 1,
             is_loading_games: false,
-            status_message: format!(
-                "Загружено 0 игр ({})",
-                consoles.get(selected_console_idx).map(|c| c.short_name.as_str()).unwrap_or("NES")
-            ),
+            status_message: format!("Загружено 0 игр ({})", initial_console_name),
             search_query: String::new(),
             search_results: Vec::new(),
             is_searching: false,
