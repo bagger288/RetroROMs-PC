@@ -979,7 +979,10 @@ impl eframe::App for RetroRomsApp {
             }
         }
 
-        // Apply visual theme
+        // Apply visual theme & DPI adaptive scale
+        if self.settings.ui_scale >= 0.5 && self.settings.ui_scale <= 3.0 {
+            ctx.set_zoom_factor(self.settings.ui_scale);
+        }
         self.theme.apply_to_ctx(ctx);
 
         // Handle modals

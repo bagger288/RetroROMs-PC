@@ -122,8 +122,8 @@ fn render_game_card(
     on_play_clicked: &mut Option<GameCard>,
     on_view_image: &mut Option<(String, String)>,
 ) {
-    let margin = 6.0;
-    let stroke_width = 1.0;
+    let margin = 6.0_f32;
+    let stroke_width: f32 = 1.0_f32;
     // Inner dimensions strictly account for margins and strokes on both sides
     let inner_width = (width - (margin + stroke_width) * 2.0).max(80.0);
     let inner_height = (height - (margin + stroke_width) * 2.0).max(80.0);
@@ -131,7 +131,7 @@ fn render_game_card(
     let frame = Frame::none()
         .fill(theme.card_bg_color())
         .rounding(Rounding::same(8.0))
-        .stroke(Stroke::new(stroke_width, theme.primary_color().gamma_multiply(0.3)))
+        .stroke(Stroke::new(stroke_width, theme.card_border_color()))
         .inner_margin(margin);
 
     frame.show(ui, |ui| {

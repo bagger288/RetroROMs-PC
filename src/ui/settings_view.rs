@@ -82,21 +82,62 @@ pub fn render_settings_view(
                 ui.add_space(4.0);
                 let themes = [
                     ThemePreset::ArcadeNeon,
-                    ThemePreset::Cyberpunk,
+                    ThemePreset::NintendoRetro,
+                    ThemePreset::SegaMega,
                     ThemePreset::Retrowave,
-                    ThemePreset::ClassicDark,
+                    ThemePreset::OledBlack,
                     ThemePreset::GameBoy,
+                    ThemePreset::ClassicDark,
+                    ThemePreset::LightClassic,
+                    ThemePreset::Cyberpunk,
                 ];
 
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for t in themes {
                         let is_active = settings.active_theme == t.as_str();
                         if ui.selectable_label(is_active, t.display_name()).clicked() {
                             settings.active_theme = t.as_str().to_string();
                             *on_theme_changed = Some(t.as_str().to_string());
+                            let _ = settings.save();
                         }
                     }
                 });
+            });
+
+            ui.add_space(12.0);
+
+            // 3.1 DPI & UI Scale Adaptation
+            ui.group(|ui| {
+                ui.label(RichText::new("🔍 МАСШТАБ ИНТЕРФЕЙСА (DPI / UI SCALE)").strong());
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("{:.0}%", settings.ui_scale * 100.0)).strong());
+                    let scale_slider = ui.add(
+                        egui::Slider::new(&mut settings.ui_scale, 0.75..=2.0)
+                            .step_by(0.05)
+                            .text("Масштаб"),
+                    );
+                    if scale_slider.changed() {
+                        let _ = settings.save();
+                    }
+                    if ui.button("100%").clicked() {
+                        settings.ui_scale = 1.0;
+                        let _ = settings.save();
+                    }
+                    if ui.button("125%").clicked() {
+                        settings.ui_scale = 1.25;
+                        let _ = settings.save();
+                    }
+                    if ui.button("150%").clicked() {
+                        settings.ui_scale = 1.5;
+                        let _ = settings.save();
+                    }
+                });
+                ui.label(
+                    RichText::new("Адаптирует размер шрифтов, кнопок и элементов под мониторы с высоким разрешением (FullHD, 2K, 4K)")
+                        .weak()
+                        .size(11.0),
+                );
             });
 
             ui.add_space(12.0);
