@@ -18,35 +18,33 @@ pub fn render_sidebar(
         // App Title Banner
         ui.add_space(4.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new("🕹").size(24.0));
+            ui.label(RichText::new("🎮").size(22.0).color(theme.primary_color()));
+            ui.add_space(2.0);
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("RetroROMs")
-                            .color(theme.primary_color())
+                            .color(Color32::WHITE)
                             .strong()
-                            .size(16.0),
+                            .size(15.0),
                     );
                     ui.label(
                         RichText::new("v1.0")
-                            .color(theme.secondary_color())
-                            .size(10.0)
-                            .strong(),
+                            .color(theme.text_secondary())
+                            .size(10.5),
                     );
                 });
                 ui.label(
-                    RichText::new("Emu-Land Catalog & ROM Manager")
-                        .color(theme.text_secondary())
-                        .size(10.0),
+                    RichText::new("EmuLand Catalog & ROM Manager")
+                        .color(theme.text_muted())
+                        .size(10.5),
                 );
             });
         });
 
         ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(6.0);
 
-        // 1. Primary Navigation Tabs (Android M3 style navigation)
+        // 1. Primary Navigation Tabs (Pills matching screenshot)
         let tabs = [
             (NavTab::Catalog, "🎮", "Каталог игр", None),
             (
@@ -57,7 +55,7 @@ pub fn render_sidebar(
             ),
             (
                 NavTab::Favorites,
-                "⭐",
+                "★",
                 "Избранное",
                 if fav_count > 0 { Some(fav_count) } else { None },
             ),
@@ -67,31 +65,25 @@ pub fn render_sidebar(
         for (tab, icon, label, badge) in tabs {
             let is_selected = *current_tab == tab;
             let bg_color = if is_selected {
-                theme.primary_color().gamma_multiply(0.25)
+                theme.primary_color()
             } else {
                 Color32::TRANSPARENT
             };
-            let stroke = if is_selected {
-                Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.7))
+            let text_color = if is_selected {
+                Color32::WHITE
             } else {
-                Stroke::NONE
+                Color32::from_rgb(235, 240, 248)
             };
 
             let item_frame = Frame::none()
                 .fill(bg_color)
                 .rounding(Rounding::same(8.0))
-                .stroke(stroke)
                 .inner_margin(egui::Margin::symmetric(10.0, 7.0));
 
             let resp = item_frame.show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(icon).size(14.0));
-                    ui.add_space(4.0);
-                    let text_color = if is_selected {
-                        theme.primary_color()
-                    } else {
-                        theme.text_color()
-                    };
+                    ui.label(RichText::new(icon).size(14.0).color(text_color));
+                    ui.add_space(6.0);
                     ui.label(
                         RichText::new(label)
                             .color(text_color)
@@ -137,16 +129,21 @@ pub fn render_sidebar(
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("ПЛАТФОРМЫ")
-                    .color(theme.text_secondary())
+                    .color(theme.text_muted())
                     .strong()
                     .size(11.0),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .button(RichText::new("⚙ Список").size(10.5))
-                    .on_hover_text("Настройка порядка и видимости консолей")
-                    .clicked()
-                {
+                let btn_frame = Frame::none()
+                    .fill(theme.surface_container())
+                    .rounding(Rounding::same(6.0))
+                    .stroke(Stroke::new(1.0_f32, theme.chip_border_color()))
+                    .inner_margin(egui::Margin::symmetric(8.0, 3.0));
+
+                let resp = btn_frame.show(ui, |ui| {
+                    ui.label(RichText::new("⚙ Список").size(10.5).color(theme.text_secondary()));
+                });
+                if ui.interact(resp.response.rect, ui.id().with("btn_manage_consoles"), egui::Sense::click()).clicked() {
                     *manage_clicked = true;
                 }
             });
@@ -178,8 +175,8 @@ pub fn render_sidebar(
                     ui.add_space(6.0);
                     ui.label(
                         RichText::new(cat_title)
-                            .color(theme.primary_color().gamma_multiply(0.7))
-                            .size(10.0)
+                            .color(Color32::from_rgb(78, 159, 229)) // Light cyan/blue-gray header
+                            .size(10.5)
                             .strong(),
                     );
                     ui.add_space(2.0);
@@ -187,39 +184,38 @@ pub fn render_sidebar(
                     for (original_idx, c) in cat_consoles {
                         let is_selected = *current_tab == NavTab::Catalog && *selected_console_idx == original_idx;
                         let bg_color = if is_selected {
-                            theme.primary_color().gamma_multiply(0.22)
+                            theme.primary_color() // Solid filled blue pill
                         } else {
                             Color32::TRANSPARENT
                         };
-                        let stroke = if is_selected {
-                            Stroke::new(1.0_f32, theme.primary_color().gamma_multiply(0.6))
+                        let name_color = if is_selected {
+                            Color32::WHITE
                         } else {
-                            Stroke::NONE
+                            Color32::from_rgb(224, 230, 237)
+                        };
+                        let year_color = if is_selected {
+                            Color32::from_rgb(224, 237, 255)
+                        } else {
+                            theme.text_muted()
                         };
 
                         let item_frame = Frame::none()
                             .fill(bg_color)
                             .rounding(Rounding::same(6.0))
-                            .stroke(stroke)
                             .inner_margin(egui::Margin::symmetric(8.0, 5.0));
 
                         let resp = item_frame.show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(&c.icon_key).size(13.0));
-                                ui.add_space(2.0);
+                                ui.label(RichText::new(&c.icon_key).size(13.0).color(name_color));
+                                ui.add_space(4.0);
 
-                                let name_color = if is_selected {
-                                    theme.primary_color()
-                                } else {
-                                    theme.text_color()
-                                };
                                 ui.add_sized(
                                     Vec2::new(110.0, 16.0),
                                     egui::Label::new(
                                         RichText::new(&c.short_name)
                                             .color(name_color)
                                             .strong()
-                                            .size(12.0),
+                                            .size(12.5),
                                     )
                                     .truncate(),
                                 );
@@ -227,8 +223,8 @@ pub fn render_sidebar(
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     ui.label(
                                         RichText::new(&c.release_year)
-                                            .color(theme.text_secondary())
-                                            .size(10.0),
+                                            .color(year_color)
+                                            .size(10.5),
                                     );
                                 });
                             });

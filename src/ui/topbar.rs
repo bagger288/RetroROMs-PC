@@ -1,7 +1,7 @@
 use crate::models::CatalogCategory;
 use crate::theme::ThemePreset;
 use crate::ui::{SortOption, ViewMode};
-use egui::{RichText, ScrollArea, Ui};
+use egui::{Color32, Frame, RichText, Rounding, ScrollArea, Stroke, Ui, Vec2};
 
 pub fn render_topbar(
     ui: &mut Ui,
@@ -23,179 +23,247 @@ pub fn render_topbar(
 ) {
     let is_search_mode = !search_query.trim().is_empty();
 
-    ui.vertical(|ui| {
-        // Line 1: Search input, Search buttons, View Mode, Sort, Refresh
-        ui.horizontal(|ui| {
-            ui.label("🔍");
-            let search_edit = ui.add(
-                egui::TextEdit::singleline(search_query)
-                    .hint_text("Поиск по всей библиотеке Emu-Land (Mario, Sonic…)")
-                    .desired_width(320.0),
-            );
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
 
-            // Press Enter to search
-            if search_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                *on_search_triggered = true;
-            }
+        // 1. Search Bar (Rounded pill shape)
+        let search_frame = Frame::none()
+            .fill(theme.surface_container())
+            .rounding(Rounding::same(16.0))
+            .stroke(Stroke::new(1.0_f32, theme.chip_border_color()))
+            .inner_margin(egui::Margin::symmetric(10.0, 5.0));
 
-            if !search_query.trim().is_empty() {
-                if ui.button("Найти").clicked() {
+        search_frame.show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("🔍").size(13.0).color(theme.text_secondary()));
+                let search_edit = ui.add(
+                    egui::TextEdit::singleline(search_query)
+                        .hint_text("Поиск по всей библиотеке EmuLand (Mario, Sonic...)")
+                        .desired_width(320.0)
+                        .frame(false),
+                );
+
+                if search_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     *on_search_triggered = true;
                 }
-                if ui.small_button("✖").on_hover_text("Очистить поиск").clicked() {
-                    search_query.clear();
-                    *on_clear_search = true;
-                }
-            }
 
-            ui.add_space(12.0);
-
-            // View Mode buttons
-            ui.label("Вид:");
-            let grid_active = *view_mode == ViewMode::Grid;
-            let table_active = *view_mode == ViewMode::Table;
-
-            if ui
-                .selectable_label(
-                    grid_active,
-                    RichText::new("⊞ Сетка")
-                        .color(if grid_active { theme.primary_color() } else { theme.text_color() }),
-                )
-                .clicked()
-            {
-                *view_mode = ViewMode::Grid;
-            }
-
-            if ui
-                .selectable_label(
-                    table_active,
-                    RichText::new("☰ Таблица")
-                        .color(if table_active { theme.primary_color() } else { theme.text_color() }),
-                )
-                .clicked()
-            {
-                *view_mode = ViewMode::Table;
-            }
-
-            ui.add_space(12.0);
-
-            // Sort Dropdown
-            egui::ComboBox::from_id_salt("sort_combo")
-                .selected_text(format!("Сортировка: {}", sort_option.label()))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(sort_option, SortOption::Default, SortOption::Default.label());
-                    ui.selectable_value(sort_option, SortOption::RatingDesc, SortOption::RatingDesc.label());
-                    ui.selectable_value(sort_option, SortOption::TitleAsc, SortOption::TitleAsc.label());
-                    ui.selectable_value(sort_option, SortOption::TitleDesc, SortOption::TitleDesc.label());
-                });
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .button(if is_loading { "⏳ Загрузка..." } else { "⟳ Обновить" })
-                    .clicked()
-                    && !is_loading
-                {
-                    *on_refresh_clicked = true;
+                if !search_query.trim().is_empty() {
+                    if ui
+                        .small_button("✖")
+                        .on_hover_text("Очистить поиск")
+                        .clicked()
+                    {
+                        search_query.clear();
+                        *on_clear_search = true;
+                    }
                 }
             });
         });
 
-        ui.add_space(6.0);
+        ui.add_space(4.0);
 
-        // Line 2: Either Global Search Results & Platform Filter Chips, or Normal Console Categories
-        if is_search_mode {
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 8.0;
+        // 2. View Mode Switcher ("Вид: [⊞ Сетка] [☰ Таблица]")
+        ui.label(RichText::new("Вид:").color(theme.text_secondary()).size(12.5));
 
-                // 1. Status / count label
-                if is_searching {
-                    ui.label(
-                        RichText::new("⏳ Поиск по всей библиотеке Emu-Land.net…")
-                            .color(theme.accent_color())
-                            .strong(),
-                    );
-                } else {
-                    ui.label(
-                        RichText::new(format!("Найдено: {} игр", search_results_count))
-                            .color(theme.primary_color())
-                            .strong(),
-                    );
-                }
+        // Grid Button
+        let grid_active = *view_mode == ViewMode::Grid;
+        let grid_bg = if grid_active { theme.primary_color() } else { theme.surface_container() };
+        let grid_fg = if grid_active { Color32::WHITE } else { theme.text_secondary() };
+        let grid_stroke = if grid_active { Stroke::NONE } else { Stroke::new(1.0_f32, theme.chip_border_color()) };
 
-                // 2. Reserve width for reset button, give middle space to scroll area
-                let reset_btn_w = 120.0;
-                let scroll_w = (ui.available_width() - reset_btn_w - 12.0).max(60.0);
-
-                if search_results_count > 0 && !search_platforms.is_empty() {
-                    ui.allocate_ui_with_layout(
-                        egui::Vec2::new(scroll_w, 24.0),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            ScrollArea::horizontal()
-                                .id_salt("search_platforms_scroll")
-                                .auto_shrink([false, false])
-                                .show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.spacing_mut().item_spacing.x = 6.0;
-                                        let all_selected = search_platform_filter.is_none();
-                                        let mut all_text = RichText::new(format!("Все платформы ({})", search_results_count));
-                                        if all_selected {
-                                            all_text = all_text.color(theme.primary_color()).strong();
-                                        }
-                                        if ui.selectable_label(all_selected, all_text).clicked() {
-                                            *search_platform_filter = None;
-                                        }
-
-                                        for (slug, display_name, count) in search_platforms {
-                                            let is_selected = search_platform_filter
-                                                .as_ref()
-                                                .map(|s| s == slug)
-                                                .unwrap_or(false);
-                                            let mut chip_text = RichText::new(format!("{} ({})", display_name, count));
-                                            if is_selected {
-                                                chip_text = chip_text.color(theme.primary_color()).strong();
-                                            }
-                                            if ui.selectable_label(is_selected, chip_text).clicked() {
-                                                if is_selected {
-                                                    *search_platform_filter = None;
-                                                } else {
-                                                    *search_platform_filter = Some(slug.clone());
-                                                }
-                                            }
-                                        }
-                                    });
-                                });
-                        },
-                    );
-                }
-
-                // 3. Reset button on the right
-                if ui.button("Сбросить поиск").clicked() {
-                    search_query.clear();
-                    *on_clear_search = true;
-                }
+        let grid_resp = Frame::none()
+            .fill(grid_bg)
+            .rounding(Rounding::same(14.0))
+            .stroke(grid_stroke)
+            .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+            .show(ui, |ui| {
+                ui.label(RichText::new("⊞ Сетка").color(grid_fg).strong().size(12.0));
             });
-        } else if !categories.is_empty() {
-            ScrollArea::horizontal()
-                .id_salt("topbar_categories_scroll")
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        for cat in categories {
-                            let is_selected = *selected_category == cat.key;
-                            let mut text = RichText::new(&cat.label);
-                            if is_selected {
-                                text = text.color(theme.primary_color()).strong();
+        if ui.interact(grid_resp.response.rect, ui.id().with("btn_view_grid"), egui::Sense::click()).clicked() {
+            *view_mode = ViewMode::Grid;
+        }
+
+        // Table Button
+        let table_active = *view_mode == ViewMode::Table;
+        let table_bg = if table_active { theme.primary_color() } else { theme.surface_container() };
+        let table_fg = if table_active { Color32::WHITE } else { theme.text_secondary() };
+        let table_stroke = if table_active { Stroke::NONE } else { Stroke::new(1.0_f32, theme.chip_border_color()) };
+
+        let table_resp = Frame::none()
+            .fill(table_bg)
+            .rounding(Rounding::same(14.0))
+            .stroke(table_stroke)
+            .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+            .show(ui, |ui| {
+                ui.label(RichText::new("☰ Таблица").color(table_fg).strong().size(12.0));
+            });
+        if ui.interact(table_resp.response.rect, ui.id().with("btn_view_table"), egui::Sense::click()).clicked() {
+            *view_mode = ViewMode::Table;
+        }
+
+        ui.add_space(4.0);
+
+        // 3. Sort ComboBox (Rounded pill)
+        let sort_label = match sort_option {
+            SortOption::Default => "По умолчанию",
+            SortOption::RatingDesc => "По рейтингу",
+            SortOption::TitleAsc => "А-Я По названию",
+            SortOption::TitleDesc => "Я-А По названию",
+        };
+
+        egui::ComboBox::from_id_salt("sort_combo")
+            .selected_text(format!("Сортировка: {}", sort_label))
+            .show_ui(ui, |ui| {
+                ui.selectable_value(sort_option, SortOption::Default, "По умолчанию");
+                ui.selectable_value(sort_option, SortOption::RatingDesc, "★ По рейтингу");
+                ui.selectable_value(sort_option, SortOption::TitleAsc, "А-Я По названию");
+                ui.selectable_value(sort_option, SortOption::TitleDesc, "Я-А По названию");
+            });
+
+        ui.add_space(4.0);
+
+        // 4. Middle Section: Quick Categories or Search Platforms
+        if is_search_mode {
+            if is_searching {
+                ui.label(RichText::new("⏳ Поиск…").color(theme.secondary_color()).size(12.0));
+            } else {
+                ui.label(RichText::new(format!("Найдено: {} игр", search_results_count)).color(theme.text_secondary()).size(12.0));
+            }
+
+            if search_results_count > 0 && !search_platforms.is_empty() {
+                ScrollArea::horizontal()
+                    .id_salt("search_platform_chips_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let all_sel = search_platform_filter.is_none();
+                            let all_bg = if all_sel { theme.primary_color() } else { theme.surface_container() };
+                            let all_fg = if all_sel { Color32::WHITE } else { theme.text_secondary() };
+                            let all_chip = Frame::none()
+                                .fill(all_bg)
+                                .rounding(Rounding::same(14.0))
+                                .stroke(Stroke::new(1.0_f32, theme.chip_border_color()))
+                                .inner_margin(egui::Margin::symmetric(9.0, 5.0))
+                                .show(ui, |ui| {
+                                    ui.label(RichText::new(format!("Все ({})", search_results_count)).color(all_fg).size(11.5));
+                                });
+                            if ui.interact(all_chip.response.rect, ui.id().with("all_plat_filter"), egui::Sense::click()).clicked() {
+                                *search_platform_filter = None;
                             }
 
-                            let btn = ui.selectable_label(is_selected, text);
-                            if btn.clicked() && !is_selected {
-                                *selected_category = cat.key.clone();
-                                *on_category_changed = true;
+                            for (slug, display_name, count) in search_platforms {
+                                let is_sel = search_platform_filter.as_ref().map(|s| s == slug).unwrap_or(false);
+                                let p_bg = if is_sel { theme.primary_color() } else { theme.surface_container() };
+                                let p_fg = if is_sel { Color32::WHITE } else { theme.text_secondary() };
+                                let p_chip = Frame::none()
+                                    .fill(p_bg)
+                                    .rounding(Rounding::same(14.0))
+                                    .stroke(Stroke::new(1.0_f32, theme.chip_border_color()))
+                                    .inner_margin(egui::Margin::symmetric(9.0, 5.0))
+                                    .show(ui, |ui| {
+                                        ui.label(RichText::new(format!("{} ({})", display_name, count)).color(p_fg).size(11.5));
+                                    });
+                                if ui.interact(p_chip.response.rect, ui.id().with("p_chip").with(slug), egui::Sense::click()).clicked() {
+                                    if is_sel {
+                                        *search_platform_filter = None;
+                                    } else {
+                                        *search_platform_filter = Some(slug.clone());
+                                    }
+                                }
                             }
-                        }
+                        });
                     });
-                });
+            }
+        } else {
+            // Standard category chips matching screenshot:
+            // "📁 Прочее", "🎮 Homebrew", "🔥 Популярные", "★ Лучшие"
+            let quick_cats = [
+                ("misc", "📁 Прочее"),
+                ("homebrew", "🎮 Homebrew"),
+                ("top", "🔥 Популярные"),
+                ("best", "★ Лучшие"),
+            ];
+
+            for (cat_key, cat_title) in quick_cats {
+                let is_active = selected_category == cat_key;
+                let chip_bg = if is_active { theme.primary_color() } else { theme.surface_container() };
+                let chip_fg = if is_active { Color32::WHITE } else { theme.text_secondary() };
+                let chip_stroke = if is_active { Stroke::NONE } else { Stroke::new(1.0_f32, theme.chip_border_color()) };
+
+                let chip_resp = Frame::none()
+                    .fill(chip_bg)
+                    .rounding(Rounding::same(14.0))
+                    .stroke(chip_stroke)
+                    .inner_margin(egui::Margin::symmetric(10.0, 6.0))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new(cat_title).color(chip_fg).strong().size(12.0));
+                    });
+
+                if ui.interact(chip_resp.response.rect, ui.id().with("chip").with(cat_key), egui::Sense::click()).clicked() {
+                    if *selected_category != cat_key {
+                        *selected_category = cat_key.to_string();
+                        *on_category_changed = true;
+                    }
+                }
+            }
+
+            // Scrollable remaining categories (e.g. alphabet letters A-Z) if any
+            let remaining_cats: Vec<&CatalogCategory> = categories
+                .iter()
+                .filter(|c| c.key != "misc" && c.key != "homebrew" && c.key != "top" && c.key != "best")
+                .collect();
+
+            if !remaining_cats.is_empty() {
+                ScrollArea::horizontal()
+                    .id_salt("extra_cats_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            for c in remaining_cats {
+                                let is_active = selected_category == &c.key;
+                                let chip_bg = if is_active { theme.primary_color() } else { theme.surface_container() };
+                                let chip_fg = if is_active { Color32::WHITE } else { theme.text_secondary() };
+                                let chip_stroke = if is_active { Stroke::NONE } else { Stroke::new(1.0_f32, theme.chip_border_color()) };
+
+                                let chip_resp = Frame::none()
+                                    .fill(chip_bg)
+                                    .rounding(Rounding::same(14.0))
+                                    .stroke(chip_stroke)
+                                    .inner_margin(egui::Margin::symmetric(9.0, 5.0))
+                                    .show(ui, |ui| {
+                                        ui.label(RichText::new(&c.label).color(chip_fg).size(11.5));
+                                    });
+
+                                if ui.interact(chip_resp.response.rect, ui.id().with("chip_extra").with(&c.key), egui::Sense::click()).clicked() {
+                                    if selected_category != &c.key {
+                                        *selected_category = c.key.clone();
+                                        *on_category_changed = true;
+                                    }
+                                }
+                            }
+                        });
+                    });
+            }
         }
+
+        // 5. Far Right: Refresh Button
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let ref_bg = theme.surface_container();
+            let ref_fg = theme.text_color();
+
+            let ref_resp = Frame::none()
+                .fill(ref_bg)
+                .rounding(Rounding::same(14.0))
+                .stroke(Stroke::new(1.0_f32, theme.chip_border_color()))
+                .inner_margin(egui::Margin::symmetric(12.0, 6.0))
+                .show(ui, |ui| {
+                    let text = if is_loading { "⏳ Загрузка..." } else { "⟳ Обновить" };
+                    ui.label(RichText::new(text).color(ref_fg).size(12.0));
+                });
+
+            if ui.interact(ref_resp.response.rect, ui.id().with("btn_refresh"), egui::Sense::click()).clicked() && !is_loading {
+                *on_refresh_clicked = true;
+            }
+        });
     });
 }

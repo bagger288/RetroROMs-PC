@@ -38,7 +38,7 @@ async fn main() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 780.0])
             .with_min_inner_size([880.0, 560.0])
-            .with_title("RetroROMs — Emu-Land Catalog & ROM Manager"),
+            .with_title("RetroROMs — EmuLand Catalog & ROM Manager"),
         ..Default::default()
     };
 
@@ -199,7 +199,10 @@ impl RetroRomsApp {
             current_page: 1,
             total_pages: 1,
             is_loading_games: false,
-            status_message: "Готово к работе".to_string(),
+            status_message: format!(
+                "Загружено 0 игр ({})",
+                consoles.get(selected_console_idx).map(|c| c.short_name.as_str()).unwrap_or("NES")
+            ),
             search_query: String::new(),
             search_results: Vec::new(),
             is_searching: false,
