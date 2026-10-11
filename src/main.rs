@@ -692,14 +692,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         main_window.on_game_favorite_toggled(move |game_id, is_fav| {
             let mut state = state.lock().unwrap();
             let mut target_game = None;
-            for g in state
-                .catalog_games
-                .iter_mut()
-                .chain(state.search_results.iter_mut())
-            {
+            for g in &mut state.catalog_games {
                 if g.id == game_id.as_str() {
                     g.is_favorite = is_fav;
                     target_game = Some(g.clone());
+                }
+            }
+            for g in &mut state.search_results {
+                if g.id == game_id.as_str() {
+                    g.is_favorite = is_fav;
+                    if target_game.is_none() {
+                        target_game = Some(g.clone());
+                    }
+                }
+            }
+            for g in &mut state.favorite_games {
+                if g.id == game_id.as_str() {
+                    g.is_favorite = is_fav;
+                    if target_game.is_none() {
+                        target_game = Some(g.clone());
+                    }
                 }
             }
             if let Some(g) = target_game {
@@ -775,9 +787,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let state = app_state.clone();
         main_window.on_play_downloaded_file(move |file_path| {
-            let p = file_path.to_string();
+            let p = PathBuf::from(file_path.as_str());
             let state = state.lock().unwrap();
-            let _ = open::that(&p);
+            let console_slug = state
+                .download_history
+                .iter()
+                .find(|r| r.local_path.as_deref() == Some(file_path.as_str()))
+                .map(|r| r.console_slug.clone())
+                .unwrap_or_default();
+            play_rom_path(&state.settings, &console_slug, &p);
         });
     }
 
