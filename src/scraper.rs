@@ -38,7 +38,9 @@ pub fn normalize_image_url(src: &str) -> Option<String> {
         format!("https:{}", clean)
     } else if clean.starts_with('/') {
         format!("{}{}", BASE_URL, clean)
-    } else if clean.starts_with("http://") || clean.starts_with("https://") {
+    } else if clean.starts_with("http://") {
+        format!("https://{}", &clean["http://".len()..])
+    } else if clean.starts_with("https://") {
         clean.to_string()
     } else {
         format!("{}/{}", BASE_URL, clean)
