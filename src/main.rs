@@ -2,7 +2,7 @@ use eframe::egui;
 use egui::{CentralPanel, RichText, SidePanel, TopBottomPanel};
 use retroms_desktop::config::AppSettings;
 use retroms_desktop::db::Database;
-use retroms_desktop::downloader::{self, DownloadEvent, DownloadManager};
+use retroms_desktop::downloader::{DownloadEvent, DownloadManager};
 use retroms_desktop::integrations::{launch_emulator, launch_retroarch, reveal_in_file_explorer};
 use retroms_desktop::models::{
     ConsoleInfo, DownloadRecord, DownloadStatus, GameCard, RomFileVersion, ZipExtractionRequest,
@@ -838,17 +838,22 @@ impl RetroRomsApp {
                 return;
             }
 
-            let core = self.settings.get_retroarch_core_for_console(&game.console_slug);
-            println!("[PLAY] Выбранное ядро RetroArch для {}: {:?}", game.console_slug, core);
+            let core_str = self.settings.get_retroarch_core_for_console(&game.console_slug);
+            let core_opt = if core_str.trim().is_empty() {
+                None
+            } else {
+                Some(core_str.as_str())
+            };
+            println!("[PLAY] Выбранное ядро RetroArch для {}: {:?}", game.console_slug, core_opt);
 
             match launch_retroarch(
                 &self.settings.retroarch_path,
                 &local_path,
-                core,
+                core_opt,
                 &self.settings.retroarch_args,
             ) {
                 Ok(_) => {
-                    let core_display = core.unwrap_or("авто");
+                    let core_display = core_opt.unwrap_or("авто");
                     let msg = format!("Запущен RetroArch [{}] для {}", core_display, game.title);
                     println!("[PLAY УСПЕХ] {}", msg);
                     self.set_status(msg);
